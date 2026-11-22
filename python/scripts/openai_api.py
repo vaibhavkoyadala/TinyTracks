@@ -21,6 +21,7 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from audio import AudioError, read_wav
+from request_log import RequestLogMiddleware
 from catalog import CATALOG_BY_ID
 from llm_runtime import ContextTooLong
 from serving import NotLive, Serving, WrongModelKind
@@ -41,6 +42,7 @@ def _error_body(err: OpenAIError) -> dict:
 
 def build_app(serving: Serving) -> FastAPI:
     app = FastAPI(title="TinyTracks OpenAI-compatible API", version="1.0")
+    app.add_middleware(RequestLogMiddleware, server="openai", store=serving.store)
 
     @app.exception_handler(OpenAIError)
     async def _handle(_request: Request, err: OpenAIError):
@@ -69,6 +71,7 @@ def build_app(serving: Serving) -> FastAPI:
         check_auth(request)
         body = await _json_body(request)
         model_id = body.get("model")
+        request.state.model_id = model_id if isinstance(model_id, str) else None
         messages = body.get("messages")
         if not isinstance(model_id, str) or not model_id:
             raise OpenAIError(400, "You must provide a model parameter.", "invalid_request_error", "missing_model", "model")
@@ -156,6 +159,7 @@ def build_app(serving: Serving) -> FastAPI:
         response_format: str = Form("json"),
     ):
         check_auth(request)
+        request.state.model_id = model
         if model not in CATALOG_BY_ID:
             raise OpenAIError(404, f"The model '{model}' does not exist.", "invalid_request_error", "model_not_found", "model")
         if response_format not in ("json", "text", "verbose_json"):

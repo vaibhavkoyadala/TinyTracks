@@ -4,6 +4,7 @@ The OpenAI-compatible API is a separate app on its own port; see openai_api.py.
 """
 import os
 import secrets
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -16,6 +17,8 @@ from benchmarks import BenchmarkManager
 from catalog import CATALOG_BY_ID
 from downloads import Busy, DownloadManager, NoSpace, UnknownModel
 from gpu_worker import GpuWorker
+import gpu_stats
+from request_log import RequestLogMiddleware
 from serving import AUDIO_ARCHITECTURES, NotServable, Serving
 
 app = FastAPI(title="TinyTracks API", version="0.2.0")
@@ -32,6 +35,7 @@ gpu = GpuWorker()
 manager = DownloadManager.open(DATA_DIR)
 serving = Serving(manager.store, manager, gpu)
 benchmarks = BenchmarkManager(manager.store, serving, gpu)
+app.add_middleware(RequestLogMiddleware, server="window", store=manager.store)
 
 
 def require_token(x_tinytracks_token: str = Header(default="")) -> None:
@@ -300,3 +304,23 @@ def cancel_benchmark(job_id: str) -> dict:
 def list_kernels(model_id: str | None = None) -> dict:
     """Kernel options that BEAM search found, grouped by the job that found them."""
     return {"kernels": benchmarks.kernels(model_id)}
+
+
+# ----- request log and monitor ---------------------------------------------------
+
+@app.get("/api/requests", dependencies=[Depends(require_token)])
+def list_requests(limit: int = 200, before: int | None = None, server: str | None = None,
+                  errors_only: bool = False) -> dict:
+    """Recent requests to both APIs, newest first. Pass the last id as `before` to page back."""
+    limit = max(1, min(limit, 1000))
+    return {"requests": manager.store.list_requests(limit, before, server, errors_only)}
+
+
+@app.get("/api/requests/summary", dependencies=[Depends(require_token)])
+def request_summary() -> dict:
+    return manager.store.request_summary(time.time() - 3600)
+
+
+@app.get("/api/gpu", dependencies=[Depends(require_token)])
+def gpu_status() -> dict:
+    return gpu_stats.read()

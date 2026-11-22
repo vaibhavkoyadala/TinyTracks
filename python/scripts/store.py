@@ -8,7 +8,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS models (
@@ -34,6 +34,21 @@ CREATE TABLE IF NOT EXISTS model_files (
     done         INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (model_id, filename)
 );
+
+CREATE TABLE IF NOT EXISTS request_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts              REAL NOT NULL,
+    server          TEXT NOT NULL,
+    method          TEXT NOT NULL,
+    path            TEXT NOT NULL,
+    status          INTEGER,
+    duration_ms     REAL,
+    model_id        TEXT,
+    client          TEXT,
+    request_bytes   INTEGER,
+    response_bytes  INTEGER
+);
+CREATE INDEX IF NOT EXISTS request_log_ts ON request_log (ts);
 
 CREATE TABLE IF NOT EXISTS settings (
     key    TEXT PRIMARY KEY,
@@ -276,3 +291,44 @@ class Store:
             else:
                 rows = c.execute("SELECT * FROM kernels ORDER BY id").fetchall()
         return [dict(r) for r in rows]
+
+    # ----- request log ------------------------------------------------------
+
+    def add_request(self, row: dict) -> None:
+        with self._conn() as c:
+            c.execute(
+                "INSERT INTO request_log (ts, server, method, path, status, duration_ms, model_id, client, "
+                "request_bytes, response_bytes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (row["ts"], row["server"], row["method"], row["path"], row["status"], row["duration_ms"],
+                 row["model_id"], row["client"], row["request_bytes"], row["response_bytes"]),
+            )
+
+    def list_requests(self, limit: int = 200, before_id: int | None = None, server: str | None = None,
+                      errors_only: bool = False) -> list[dict]:
+        where, args = [], []
+        if before_id:
+            where.append("id < ?")
+            args.append(before_id)
+        if server:
+            where.append("server = ?")
+            args.append(server)
+        if errors_only:
+            where.append("status >= 400")
+        clause = ("WHERE " + " AND ".join(where)) if where else ""
+        with self._conn() as c:
+            rows = c.execute(f"SELECT * FROM request_log {clause} ORDER BY id DESC LIMIT ?", (*args, limit)).fetchall()
+        return [dict(r) for r in rows]
+
+    def request_summary(self, since: float) -> dict:
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT COUNT(*) AS total, SUM(status >= 400) AS errors, AVG(duration_ms) AS avg_ms, "
+                "SUM(server = 'openai') AS openai FROM request_log WHERE ts >= ?", (since,)).fetchone()
+        return {"total": row["total"] or 0, "errors": row["errors"] or 0,
+                "avg_ms": round(row["avg_ms"], 1) if row["avg_ms"] is not None else None,
+                "openai": row["openai"] or 0}
+
+    def prune_requests(self, keep: int) -> None:
+        with self._conn() as c:
+            c.execute("DELETE FROM request_log WHERE id <= (SELECT MAX(id) FROM request_log) - ?", (keep,))
+

@@ -18,6 +18,8 @@
         <button class="tab" role="tab" data-tab="models" aria-selected="false">Models</button>
         <button class="tab" role="tab" data-tab="beam" aria-selected="false">Beam</button>
         <button class="tab" role="tab" data-tab="kernels" aria-selected="false">Kernels</button>
+        <button class="tab" role="tab" data-tab="requests" aria-selected="false">Requests</button>
+        <button class="tab" role="tab" data-tab="monitor" aria-selected="false">Monitor</button>
         <button class="tab" role="tab" data-tab="compute" aria-selected="false">Compute</button>
         <button class="tab" role="tab" data-tab="health" aria-selected="false">Health</button>
       </nav>
@@ -139,6 +141,56 @@
             <tbody id="kernels-body"></tbody>
           </table>
           <p id="kernels-empty" class="empty">No kernels recorded for this model.</p>
+        </section>
+
+        <!-- Requests: every request to the window API and the OpenAI-compatible API -->
+        <section id="tab-requests" class="tab-body" role="tabpanel">
+          <div class="row">
+            <label>Server
+              <select id="req-server">
+                <option value="">All</option>
+                <option value="openai">OpenAI API</option>
+                <option value="window">Window API</option>
+              </select>
+            </label>
+            <label class="inline"><input type="checkbox" id="req-errors" /> errors only</label>
+          </div>
+          <p id="req-summary" class="sub"></p>
+          <table class="grid">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Server</th>
+                <th>Method</th>
+                <th>Path</th>
+                <th>Model</th>
+                <th>Status</th>
+                <th>ms</th>
+                <th>In</th>
+                <th>Out</th>
+              </tr>
+            </thead>
+            <tbody id="req-body"></tbody>
+          </table>
+          <p id="req-empty" class="empty">No requests yet.</p>
+        </section>
+
+        <!-- Monitor: GPU utilization and memory -->
+        <section id="tab-monitor" class="tab-body" role="tabpanel">
+          <p id="gpu-status" class="empty"></p>
+          <div class="gauges">
+            <div class="gauge"><div class="sub">GPU device</div><div class="mono big" id="gpu-device">—</div></div>
+            <div class="gauge"><div class="sub">Renderer</div><div class="mono big" id="gpu-renderer">—</div></div>
+            <div class="gauge"><div class="sub">Tiler</div><div class="mono big" id="gpu-tiler">—</div></div>
+            <div class="gauge wide">
+              <div class="sub">Unified memory in use</div>
+              <div class="mono" id="gpu-memory">—</div>
+              <div class="bar"><div class="fill" id="gpu-memory-bar"></div></div>
+              <div class="sub" id="gpu-alloc">—</div>
+            </div>
+          </div>
+          <h2 class="section">GPU device utilization · last 60 seconds</h2>
+          <div id="gpu-chart" class="chart"></div>
         </section>
 
         <section id="tab-compute" class="tab-body" role="tabpanel">

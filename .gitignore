@@ -8,3 +8,5 @@ python/share/
 python/**/__pycache__/
 python/**/*.pyc
 python/data/
+__pycache__/
+*.pyc

@@ -600,6 +600,8 @@ function refreshActiveTab() {
   if (activeTab === 'dashboard') refreshDashboard();
   if (activeTab === 'beam') refreshBenchmarks();
   if (activeTab === 'kernels') refreshKernels();
+  if (activeTab === 'requests') refreshRequests();
+  if (activeTab === 'monitor') drawGpu();
 }
 
 function startPolling() {
@@ -608,6 +610,7 @@ function startPolling() {
   setInterval(() => {
     tickCount++;
     refreshModels();
+    refreshGpu();  // sampled every second, so the chart has history when the tab opens
     if (activeTab === 'kernels') {
       if (tickCount % 3 === 0) refreshKernels();
     } else {
@@ -628,6 +631,93 @@ async function init() {
     }
   }, 500);
   await refreshStatus();
+}
+
+// ----- requests ------------------------------------------------------------------------
+
+const requestTimes = (ts) => new Date(ts * 1000).toLocaleTimeString();
+
+async function refreshRequests() {
+  const params = new URLSearchParams({ limit: '200' });
+  if ($('req-server').value) params.set('server', $('req-server').value);
+  if ($('req-errors').checked) params.set('errors_only', 'true');
+  let data;
+  let summary;
+  try {
+    [data, summary] = await Promise.all([
+      api('GET', `/api/requests?${params}`),
+      api('GET', '/api/requests/summary'),
+    ]);
+  } catch (err) {
+    $('req-summary').textContent = err.message;
+    return;
+  }
+  $('req-summary').textContent =
+    `last hour: ${summary.total} requests · ${summary.openai} via OpenAI API · ${summary.errors} errors · ` +
+    `average ${summary.avg_ms ?? '—'} ms`;
+  $('req-empty').hidden = data.requests.length > 0;
+  $('req-body').replaceChildren(...data.requests.map((r) => el('tr', {},
+    el('td', { class: 'mono', text: requestTimes(r.ts) }),
+    el('td', { class: 'mono', text: r.server }),
+    el('td', { class: 'mono', text: r.method }),
+    el('td', { class: 'mono', text: r.path, title: r.path }),
+    el('td', { class: 'mono', text: r.model_id || '' }),
+    el('td', { class: `mono ${r.status >= 400 ? 'st-err' : 'st-ok'}`, text: String(r.status) }),
+    el('td', { class: 'mono', text: r.duration_ms != null ? r.duration_ms.toFixed(1) : '' }),
+    el('td', { class: 'mono', text: formatBytes(r.request_bytes || 0) }),
+    el('td', { class: 'mono', text: formatBytes(r.response_bytes || 0) }),
+  )));
+}
+
+$('req-server').addEventListener('change', refreshRequests);
+$('req-errors').addEventListener('change', refreshRequests);
+
+// ----- monitor ---------------------------------------------------------------------------
+
+const GPU_SAMPLES = 60;
+const gpuHistory = [];
+let chartBuilt = false;
+
+function buildChart() {
+  if (chartBuilt) return;
+  chartBuilt = true;
+  $('gpu-chart').replaceChildren(...Array.from({ length: GPU_SAMPLES }, () => el('div', { class: 'col' })));
+}
+
+function drawGpu() {
+  buildChart();
+  const cols = $('gpu-chart').children;
+  const offset = GPU_SAMPLES - gpuHistory.length;
+  for (let i = 0; i < GPU_SAMPLES; i++) {
+    const v = i < offset ? 0 : gpuHistory[i - offset];
+    cols[i].style.height = `${v}%`;
+  }
+}
+
+async function refreshGpu() {
+  let g;
+  try {
+    g = await api('GET', '/api/gpu');
+  } catch (err) {
+    $('gpu-status').textContent = err.message;
+    return;
+  }
+  if (!g.available) {
+    $('gpu-status').textContent = `GPU counters are not available: ${g.reason}`;
+    return;
+  }
+  $('gpu-status').textContent = `Source: ${g.source} (Metal) · sampled every second`;
+  gpuHistory.push(g.device_pct);
+  if (gpuHistory.length > GPU_SAMPLES) gpuHistory.shift();
+  $('gpu-device').textContent = `${g.device_pct}%`;
+  $('gpu-renderer').textContent = `${g.renderer_pct}%`;
+  $('gpu-tiler').textContent = `${g.tiler_pct}%`;
+  const total = g.memory_total || 0;
+  const used = g.memory_in_use || 0;
+  $('gpu-memory').textContent = `${formatBytes(used)} of ${formatBytes(total)}`;
+  $('gpu-memory-bar').style.width = total ? `${Math.min(100, (100 * used) / total)}%` : '0%';
+  $('gpu-alloc').textContent = `Allocated by Metal: ${formatBytes(g.memory_allocated || 0)}`;
+  if (activeTab === 'monitor') drawGpu();
 }
 
 init();

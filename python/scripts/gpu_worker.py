@@ -57,28 +57,42 @@ class GpuWorker:
         self._tasks.put(task)
         return future.result()
 
-    def stream(self, fn: Callable[[Callable[[Any], None], Callable[[], bool]], None]) -> Iterator[Any]:
-        """Run fn(emit, cancelled) on the worker, yielding each emitted event as it happens.
+    def stream(self, start: Callable[[], Iterator[Any]]) -> Iterator[Any]:
+        """Run a generator on the worker, one step per task, yielding each non-None value as it arrives.
 
-        If the consumer stops early, `cancelled()` turns True so fn can stop generating.
+        Each step is queued behind whatever else is waiting, so a long generation on one model
+        does not block the others. Only the step itself runs on the worker thread.
+        If the consumer stops early, the generator is closed on the worker at its next step.
         """
-        events: queue.Queue = queue.Queue()
-        finished = object()
+        out: queue.Queue = queue.Queue()
+        done = object()
         cancel = threading.Event()
+        holder: list[Iterator[Any]] = []
 
-        def task() -> None:
+        def step() -> None:
             try:
-                fn(events.put, cancel.is_set)
+                if not holder:
+                    holder.append(start())
+                if cancel.is_set():
+                    holder[0].close()
+                    out.put(done)
+                    return
+                item = next(holder[0])
+            except StopIteration:
+                out.put(done)
+                return
             except BaseException as exc:
-                events.put(_Failure(exc))
-            finally:
-                events.put(finished)
+                out.put(_Failure(exc))
+                return
+            if item is not None:
+                out.put(item)
+            self._tasks.put(step)  # re-queue at the back: other work runs before our next token
 
-        self._tasks.put(task)
+        self._tasks.put(step)
         try:
             while True:
-                item = events.get()
-                if item is finished:
+                item = out.get()
+                if item is done:
                     return
                 if isinstance(item, _Failure):
                     raise item.exc

@@ -60,6 +60,7 @@ class Serving:
         self._live: set[str] = set()
         self._busy: set[str] = set()         # models in use by a benchmark (cannot be ejected)
         self._stats: dict[str, dict] = {}
+        self._model_locks: dict[str, threading.Lock] = {}  # one generation at a time per model
 
     # ----- lifecycle --------------------------------------------------------
 
@@ -93,6 +94,10 @@ class Serving:
             return LoadedWhisper(model_id, self.model_dir(model_id))
         return LoadedModel(model_id, self.model_dir(model_id), self.max_context)
 
+    def _lock_for(self, model_id: str) -> threading.Lock:
+        with self._state_lock:
+            return self._model_locks.setdefault(model_id, threading.Lock())
+
     def eject(self, model_id: str) -> None:
         with self._state_lock:
             if model_id in self._busy:
@@ -107,7 +112,9 @@ class Serving:
             del model
             gc.collect()
 
-        self.gpu.call(job)
+        # Wait for any generation on this model to finish before unloading it.
+        with self._lock_for(model_id):
+            self.gpu.call(job)
 
     def play(self, model_id: str) -> None:
         self.load(model_id)
@@ -167,12 +174,16 @@ class Serving:
         return Prepared(model_id, model, ids, max(1, budget))
 
     def run(self, prepared: Prepared, temperature: float) -> Iterator[tuple[str, object]]:
-        """Yield ("delta", text) events as tokens arrive, then ("done", info)."""
-        yield from self.gpu.stream(
-            lambda emit, cancelled: self._generate(prepared, temperature, emit, cancelled))
+        """Yield ("delta", text) events as tokens arrive, then ("done", info).
 
-    def _generate(self, prepared: Prepared, temperature: float, emit, cancelled) -> None:
-        """Runs on the GpuWorker thread."""
+        Other models keep running between this model's tokens. Only one generation per model runs at a time,
+        because the model's KV cache belongs to the generation in progress.
+        """
+        with self._lock_for(prepared.model_id):
+            yield from self.gpu.stream(lambda: self._generate(prepared, temperature))
+
+    def _generate(self, prepared: Prepared, temperature: float):
+        """Generator run one step at a time on the GpuWorker thread. Yields an event per token, or None."""
         with self._state_lock:
             still_live = prepared.model_id in self._live and self._loaded.get(prepared.model_id) is prepared.model
         if not still_live:
@@ -180,20 +191,20 @@ class Serving:
 
         streamer = TextStreamer(prepared.model.tokenizer)
         info: dict = {}
+        completed = False
         try:
             for token in prepared.model.generate(prepared.ids, prepared.max_new_tokens, temperature, info):
-                if cancelled():
-                    info["finish_reason"] = "cancelled"
-                    break
                 delta = streamer.push(token)
-                if delta:
-                    emit(("delta", delta))
+                yield ("delta", delta) if delta else None
             tail = streamer.flush()
             if tail:
-                emit(("delta", tail))
-        finally:
+                yield ("delta", tail)
+            completed = True
+        finally:  # also runs when the consumer disconnects and the stream is closed
+            if not completed:
+                info["finish_reason"] = "cancelled"
             self._record(prepared.model_id, info, len(prepared.ids))
-        emit(("done", info))
+        yield ("done", info)
 
     def _record(self, model_id: str, info: dict, prompt_tokens: int) -> None:
         completion = info.get("completion_tokens", 0)
@@ -230,5 +241,6 @@ class Serving:
             self._record(model_id, {"completion_tokens": out["tokens"]}, prompt_tokens=0)
             return out
 
-        return self.gpu.call(job)
+        with self._lock_for(model_id):
+            return self.gpu.call(job)
 
