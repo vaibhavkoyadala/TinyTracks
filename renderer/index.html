@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'" />
+    <title>TinyTracks</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="window">
+      <header class="titlebar">
+        <span>TinyTracks 1.0</span>
+        <span id="status" class="status">Starting backend…</span>
+      </header>
+
+      <nav class="tabs" role="tablist">
+        <button class="tab active" role="tab" data-tab="dashboard" aria-selected="true">Dashboard</button>
+        <button class="tab" role="tab" data-tab="models" aria-selected="false">Models</button>
+        <button class="tab" role="tab" data-tab="beam" aria-selected="false">Beam</button>
+        <button class="tab" role="tab" data-tab="kernels" aria-selected="false">Kernels</button>
+        <button class="tab" role="tab" data-tab="compute" aria-selected="false">Compute</button>
+        <button class="tab" role="tab" data-tab="health" aria-selected="false">Health</button>
+      </nav>
+
+      <main class="pane">
+        <!-- Dashboard: live models, their URLs and curl commands -->
+        <section id="tab-dashboard" class="tab-body active" role="tabpanel">
+          <fieldset class="group">
+            <legend>OpenAI-compatible API</legend>
+            <div class="kv"><span>Base URL</span><code id="api-base">—</code></div>
+            <div class="kv"><span>API key</span><code id="api-key">—</code></div>
+            <div class="kv"><span>Listener</span><span id="api-listener">—</span></div>
+            <div class="row">
+              <button type="button" id="rotate-key">NEW KEY</button>
+              <span class="sub">Rotating the key breaks existing curl commands.</span>
+            </div>
+          </fieldset>
+
+          <h2 class="section">Live models</h2>
+          <div id="live-empty" class="empty">No model is live. Open the Models tab and press PLAY.</div>
+          <div id="live-list"></div>
+        </section>
+
+        <!-- Models: download, load, play, pause, eject -->
+        <section id="tab-models" class="tab-body" role="tabpanel">
+          <table class="grid">
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>Size</th>
+                <th>Download</th>
+                <th>Serving</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="models-body"></tbody>
+          </table>
+          <p id="models-msg" class="msg" role="status"></p>
+          <div id="models-foot" class="foot"></div>
+        </section>
+
+        <!-- Beam: kernel-search benchmarks -->
+        <section id="tab-beam" class="tab-body" role="tabpanel">
+          <fieldset class="group">
+            <legend>New beam search</legend>
+            <form id="beam-form" class="stack">
+              <label>Model
+                <select id="beam-model"></select>
+              </label>
+              <label>Beam widths <span class="sub">(0 = baseline, no kernel search)</span>
+                <input id="beam-widths" value="0, 1, 2, 4" />
+              </label>
+              <label>Tokens to decode per run
+                <input id="beam-tokens" type="number" min="8" max="512" value="64" />
+              </label>
+              <label>Prompt <span class="sub">(optional)</span>
+                <textarea id="beam-prompt" rows="2" placeholder="Write a short poem about the ocean."></textarea>
+              </label>
+              <div class="row">
+                <button type="submit">START</button>
+                <button type="button" id="beam-auto" class="primary">AUTO-OPTIMIZE</button>
+                <span id="beam-msg" class="msg"></span>
+              </div>
+              <p class="sub">AUTO-OPTIMIZE measures widths 0, 1, 2, … and keeps going until you press STOP AUTO
+                (it stops by itself at width 32).</p>
+            </form>
+          </fieldset>
+
+          <h2 class="section">Jobs</h2>
+          <table class="grid">
+            <thead>
+              <tr>
+                <th>Job</th>
+                <th>Model</th>
+                <th>Widths</th>
+                <th>Status</th>
+                <th>Controls</th>
+              </tr>
+            </thead>
+            <tbody id="jobs-body"></tbody>
+          </table>
+
+          <h2 class="section" id="results-title">Results</h2>
+          <table class="grid">
+            <thead>
+              <tr>
+                <th>Beam</th>
+                <th>Search</th>
+                <th>Prefill</th>
+                <th>ms / token</th>
+                <th>tok / s</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+          </table>
+          <p id="results-empty" class="empty">Select a job to see its results.</p>
+        </section>
+
+        <!-- Kernels: best kernels found by beam search -->
+        <section id="tab-kernels" class="tab-body" role="tabpanel">
+          <div class="row">
+            <label>Model
+              <select id="kernel-model"></select>
+            </label>
+          </div>
+          <h2 class="section">Best run</h2>
+          <div id="best-run" class="empty">No benchmark results yet.</div>
+          <h2 class="section">Kernels</h2>
+          <table class="grid">
+            <thead>
+              <tr>
+                <th>Beam</th>
+                <th>Kernel</th>
+                <th>Optimizations</th>
+                <th>Job</th>
+              </tr>
+            </thead>
+            <tbody id="kernels-body"></tbody>
+          </table>
+          <p id="kernels-empty" class="empty">No kernels recorded for this model.</p>
+        </section>
+
+        <section id="tab-compute" class="tab-body" role="tabpanel">
+          <form id="compute-form">
+            <label for="values">Values (comma-separated)</label>
+            <input id="values" value="1, 2, 3, 4" />
+            <button type="submit">Run on tinygrad</button>
+          </form>
+          <pre id="compute-out" class="output"></pre>
+        </section>
+
+        <section id="tab-health" class="tab-body" role="tabpanel">
+          <pre id="health-out" class="output"></pre>
+        </section>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

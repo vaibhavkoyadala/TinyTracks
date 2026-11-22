@@ -1,0 +1,198 @@
+"""Model lifecycle for live serving: download -> load -> play (live) <-> pause, and eject.
+
+    downloaded   weights on disk, not in memory; the API does not serve it
+    loaded       weights in memory, paused; the API returns 503 for it
+    live         loaded and playing; the OpenAI-compatible API serves it
+
+Every tinygrad call runs on the GpuWorker thread (see gpu_worker.py).
+"""
+from __future__ import annotations
+
+import gc
+import secrets
+import threading
+import time
+from collections.abc import Iterator
+
+from catalog import CATALOG_BY_ID
+from downloads import Busy, DownloadManager
+from gpu_worker import GpuWorker
+from llm_loader import SUPPORTED_ARCHITECTURES
+from llm_runtime import ContextTooLong, LoadedModel, TextStreamer
+from store import Store
+
+DEFAULT_MAX_CONTEXT = 2048
+API_KEY_SETTING = "openai_api_key"
+
+
+class NotServable(RuntimeError):
+    """The model cannot be loaded: not downloaded, or its architecture is not supported."""
+
+
+class NotLive(RuntimeError):
+    """The model exists but is not playing, so the API will not serve it."""
+
+
+class Prepared:
+    __slots__ = ("model_id", "model", "ids", "max_new_tokens")
+
+    def __init__(self, model_id: str, model: LoadedModel, ids: list[int], max_new_tokens: int):
+        self.model_id, self.model, self.ids, self.max_new_tokens = model_id, model, ids, max_new_tokens
+
+
+class Serving:
+    def __init__(self, store: Store, downloads: DownloadManager, gpu: GpuWorker,
+                 max_context: int = DEFAULT_MAX_CONTEXT):
+        self.store = store
+        self.downloads = downloads
+        self.gpu = gpu
+        self.max_context = max_context
+        self._state_lock = threading.Lock()  # guards the dicts below (plain data, never tinygrad)
+        self._loaded: dict[str, LoadedModel] = {}
+        self._live: set[str] = set()
+        self._busy: set[str] = set()         # models in use by a benchmark (cannot be ejected)
+        self._stats: dict[str, dict] = {}
+
+    # ----- lifecycle --------------------------------------------------------
+
+    def check_servable(self, model_id: str) -> None:
+        model = self.downloads.get(model_id)  # raises UnknownModel for ids outside the catalog
+        if model["status"] != "ready":
+            raise NotServable(f"download {model['name']} before loading it")
+        arch = CATALOG_BY_ID[model_id]["architecture"]
+        if arch not in SUPPORTED_ARCHITECTURES:
+            raise NotServable(f"{model['name']} ({arch}) cannot be served yet; only Llama and Qwen2 models can")
+
+    def model_dir(self, model_id: str):
+        return self.downloads.weights_dir / model_id
+
+    def load(self, model_id: str) -> None:
+        self.check_servable(model_id)
+
+        def job() -> None:
+            with self._state_lock:
+                if model_id in self._loaded:
+                    return
+            model = LoadedModel(model_id, self.model_dir(model_id), self.max_context)
+            with self._state_lock:
+                self._loaded[model_id] = model
+
+        self.gpu.call(job)
+
+    def eject(self, model_id: str) -> None:
+        with self._state_lock:
+            if model_id in self._busy:
+                raise Busy("a benchmark is using this model; wait for it to finish or cancel it")
+
+        def job() -> None:
+            with self._state_lock:
+                self._live.discard(model_id)
+                model = self._loaded.pop(model_id, None)
+            if model is not None:
+                model.close()
+            del model
+            gc.collect()
+
+        self.gpu.call(job)
+
+    def play(self, model_id: str) -> None:
+        self.load(model_id)
+        with self._state_lock:
+            self._live.add(model_id)
+
+    def pause(self, model_id: str) -> None:
+        with self._state_lock:
+            self._live.discard(model_id)
+
+    def state_of(self, model_id: str) -> str:
+        with self._state_lock:
+            if model_id in self._live:
+                return "live"
+            if model_id in self._loaded:
+                return "loaded"
+        return "downloaded"
+
+    def live_ids(self) -> list[str]:
+        with self._state_lock:
+            return sorted(self._live)
+
+    def loaded_model(self, model_id: str) -> LoadedModel | None:
+        with self._state_lock:
+            return self._loaded.get(model_id)
+
+    def mark_busy(self, model_id: str, busy: bool) -> None:
+        with self._state_lock:
+            (self._busy.add if busy else self._busy.discard)(model_id)
+
+    # ----- api key ----------------------------------------------------------
+
+    def api_key(self) -> str:
+        key = self.store.get_setting(API_KEY_SETTING)
+        if key is None:
+            key = self.rotate_api_key()
+        return key
+
+    def rotate_api_key(self) -> str:
+        key = "tt-" + secrets.token_urlsafe(24)
+        self.store.set_setting(API_KEY_SETTING, key)
+        return key
+
+    # ----- inference --------------------------------------------------------
+
+    def prepare(self, model_id: str, messages: list[dict], max_new_tokens: int | None) -> Prepared:
+        """Validate and tokenize a request on the request thread (tokenizers does not touch tinygrad)."""
+        with self._state_lock:
+            model = self._loaded.get(model_id) if model_id in self._live else None
+        if model is None:
+            raise NotLive(f"{model_id} is not live; press Play in TinyTracks to serve it")
+        ids = model.prompt_ids(messages)
+        room = model.max_context - len(ids)
+        budget = room if max_new_tokens is None else min(max_new_tokens, room)
+        return Prepared(model_id, model, ids, max(1, budget))
+
+    def run(self, prepared: Prepared, temperature: float) -> Iterator[tuple[str, object]]:
+        """Yield ("delta", text) events as tokens arrive, then ("done", info)."""
+        yield from self.gpu.stream(
+            lambda emit, cancelled: self._generate(prepared, temperature, emit, cancelled))
+
+    def _generate(self, prepared: Prepared, temperature: float, emit, cancelled) -> None:
+        """Runs on the GpuWorker thread."""
+        with self._state_lock:
+            still_live = prepared.model_id in self._live and self._loaded.get(prepared.model_id) is prepared.model
+        if not still_live:
+            raise NotLive(f"{prepared.model_id} was paused or ejected before generation started")
+
+        streamer = TextStreamer(prepared.model.tokenizer)
+        info: dict = {}
+        try:
+            for token in prepared.model.generate(prepared.ids, prepared.max_new_tokens, temperature, info):
+                if cancelled():
+                    info["finish_reason"] = "cancelled"
+                    break
+                delta = streamer.push(token)
+                if delta:
+                    emit(("delta", delta))
+            tail = streamer.flush()
+            if tail:
+                emit(("delta", tail))
+        finally:
+            self._record(prepared.model_id, info, len(prepared.ids))
+        emit(("done", info))
+
+    def _record(self, model_id: str, info: dict, prompt_tokens: int) -> None:
+        completion = info.get("completion_tokens", 0)
+        decode_s = info.get("decode_s") or 0.0
+        with self._state_lock:
+            st = self._stats.setdefault(model_id, {"requests": 0, "prompt_tokens": 0, "completion_tokens": 0,
+                                                    "last_tok_s": None, "since": time.time()})
+            st["requests"] += 1
+            st["prompt_tokens"] += prompt_tokens
+            st["completion_tokens"] += completion
+            if completion and decode_s > 0:
+                st["last_tok_s"] = round(completion / decode_s, 2)
+
+    def stats(self, model_id: str) -> dict:
+        with self._state_lock:
+            st = self._stats.get(model_id)
+            return dict(st) if st else {"requests": 0, "prompt_tokens": 0, "completion_tokens": 0,
+                                        "last_tok_s": None, "since": None}

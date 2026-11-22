@@ -1,0 +1,394 @@
+/* TinyTracks: a minimal 1995-ish desktop look. Grey bevels, navy title bar, block progress. */
+
+:root {
+  --face: #c0c0c0;
+  --hi: #ffffff;
+  --lo: #dfdfdf;
+  --shadow: #808080;
+  --dark: #000000;
+  --navy: #000080;
+  --teal: #008080;
+  --ok: #006000;
+  --err: #a00000;
+  color-scheme: light;
+  font: 12px/1.4 Geneva, Verdana, "Helvetica Neue", Arial, sans-serif;
+  color: var(--dark);
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  padding: 10px;
+  background: var(--teal);
+  overflow: hidden;
+}
+
+/* Raised bevel: light top-left, dark bottom-right */
+.window,
+button,
+.tab.active {
+  box-shadow: inset -1px -1px var(--dark), inset 1px 1px var(--hi);
+}
+
+.window {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 3px;
+  background: var(--face);
+  border: 1px solid;
+  border-color: var(--face) var(--dark) var(--dark) var(--face);
+  box-shadow: inset 1px 1px var(--hi), inset -1px -1px var(--shadow);
+}
+
+.titlebar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 3px 4px 3px 8px;
+  background: linear-gradient(90deg, var(--navy), #1084d0);
+  color: var(--hi);
+  font-weight: bold;
+  letter-spacing: 0.02em;
+}
+
+.status {
+  padding: 1px 6px;
+  font-weight: normal;
+  font-size: 11px;
+  color: var(--dark);
+  background: var(--face);
+  border: 1px solid;
+  border-color: var(--shadow) var(--hi) var(--hi) var(--shadow);
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status.ok { color: var(--ok); }
+.status.err { color: var(--err); }
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 4px 0;
+}
+
+.tab {
+  padding: 3px 14px 4px;
+  font: inherit;
+  background: var(--face);
+  border: 1px solid;
+  border-color: var(--hi) var(--dark) transparent var(--hi);
+  border-bottom: none;
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+  color: var(--dark);
+}
+.tab.active {
+  font-weight: bold;
+  padding-bottom: 6px;
+  margin-bottom: -2px;
+  box-shadow: none;
+}
+
+/* Sunken content well */
+.pane {
+  flex: 1;
+  min-height: 0;
+  margin: 0 4px 4px;
+  padding: 10px;
+  overflow: auto;
+  background: var(--face);
+  border: 1px solid;
+  border-color: var(--shadow) var(--hi) var(--hi) var(--shadow);
+}
+
+.tab-body { display: none; }
+.tab-body.active { display: block; }
+
+/* Buttons */
+button {
+  font: inherit;
+  min-width: 76px;
+  padding: 2px 10px;
+  color: var(--dark);
+  background: var(--face);
+  border: 1px solid;
+  border-color: var(--hi) var(--dark) var(--dark) var(--hi);
+  border-radius: 0;
+  cursor: default;
+}
+button:active:not(:disabled) {
+  border-color: var(--dark) var(--hi) var(--hi) var(--dark);
+  box-shadow: inset 1px 1px var(--shadow);
+  padding: 3px 9px 1px 11px;
+}
+button:focus-visible { outline: 1px dotted var(--dark); outline-offset: -5px; }
+button:disabled {
+  color: var(--shadow);
+  text-shadow: 1px 1px 0 var(--hi);
+}
+
+/* Form fields (Compute tab) */
+input {
+  font: inherit;
+  padding: 3px 4px;
+  background: var(--hi);
+  border: 1px solid;
+  border-color: var(--shadow) var(--hi) var(--hi) var(--shadow);
+  border-radius: 0;
+  color: var(--dark);
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 480px;
+}
+
+button[type="submit"] {
+  align-self: flex-start;
+}
+
+.output {
+  margin: 12px 0 0;
+  padding: 8px;
+  min-height: 40px;
+  background: var(--hi);
+  border: 1px solid;
+  border-color: var(--shadow) var(--hi) var(--hi) var(--shadow);
+  font: 12px/1.45 Monaco, "Courier New", monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Models table */
+.grid {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--hi);
+  border: 1px solid;
+  border-color: var(--shadow) var(--hi) var(--hi) var(--shadow);
+}
+
+.grid th {
+  padding: 3px 8px;
+  text-align: left;
+  background: var(--face);
+  border-right: 1px solid var(--shadow);
+  border-bottom: 1px solid var(--shadow);
+  box-shadow: inset -1px -1px var(--dark), inset 1px 1px var(--hi);
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.grid td {
+  padding: 8px;
+  vertical-align: top;
+  border-bottom: 1px dotted var(--shadow);
+}
+
+.grid tr:last-child td { border-bottom: none; }
+
+.model-name { font-weight: bold; }
+.sub { color: #404040; font-size: 11px; }
+.mono { font-family: Monaco, "Courier New", monospace; font-size: 11px; white-space: nowrap; }
+
+.st { font-weight: bold; }
+.st-ready { color: var(--ok); }
+.st-failed { color: var(--err); }
+.st-downloading { color: var(--navy); }
+
+.err-text {
+  color: var(--err);
+  font-size: 11px;
+  max-width: 240px;
+  margin-top: 2px;
+  word-break: break-word;
+}
+
+/* Sunken progress bar with retro blocks */
+.bar {
+  width: 180px;
+  height: 16px;
+  padding: 2px;
+  background: var(--hi);
+  border: 1px solid;
+  border-color: var(--shadow) var(--hi) var(--hi) var(--shadow);
+}
+.fill {
+  height: 100%;
+  width: 0;
+  background: repeating-linear-gradient(90deg, var(--navy) 0 9px, transparent 9px 11px);
+}
+
+.progress-line { margin-top: 4px; }
+
+.actions {
+  white-space: nowrap;
+}
+.actions button + button { margin-left: 6px; }
+
+.msg {
+  min-height: 1.4em;
+  margin: 10px 0 0;
+  font: 12px Monaco, "Courier New", monospace;
+}
+.msg.error { color: var(--err); }
+
+.foot {
+  margin-top: 10px;
+  padding-top: 4px;
+  border-top: 1px solid var(--shadow);
+  font: 11px Monaco, "Courier New", monospace;
+  color: #404040;
+}
+
+/* ----- dashboard, beam search and kernels --------------------------------------- */
+
+[hidden] { display: none !important; }
+
+h2.section {
+  font: bold 12px Geneva, Verdana, sans-serif;
+  margin: 16px 0 6px;
+  padding: 2px 6px;
+  background: var(--navy);
+  color: var(--hi);
+  display: inline-block;
+}
+
+.group {
+  margin: 0 0 12px;
+  padding: 10px 12px 12px;
+  border: 1px solid;
+  border-color: var(--shadow) var(--hi) var(--hi) var(--shadow);
+}
+.group legend {
+  padding: 0 4px;
+  font-weight: bold;
+}
+
+.kv {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  margin: 4px 0;
+}
+.kv > span:first-child {
+  min-width: 80px;
+  color: #404040;
+}
+.kv code,
+code {
+  font: 12px Monaco, "Courier New", monospace;
+  background: var(--hi);
+  padding: 1px 4px;
+  border: 1px solid var(--shadow);
+  word-break: break-all;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 6px 0;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 560px;
+}
+.stack label,
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+select,
+textarea {
+  font: inherit;
+  padding: 3px 4px;
+  background: var(--hi);
+  border: 1px solid;
+  border-color: var(--shadow) var(--hi) var(--hi) var(--shadow);
+  border-radius: 0;
+  color: var(--dark);
+}
+textarea { resize: vertical; font-family: Monaco, "Courier New", monospace; font-size: 11px; }
+
+button.primary {
+  font-weight: bold;
+}
+
+.empty {
+  color: #404040;
+  font-size: 12px;
+  margin: 6px 0;
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.btn-row button { min-width: 0; padding: 2px 8px; }
+
+.live-card {
+  margin: 8px 0 12px;
+  padding: 8px 10px;
+  background: var(--hi);
+  border: 1px solid;
+  border-color: var(--shadow) var(--hi) var(--hi) var(--shadow);
+}
+.live-head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.curl-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+}
+pre.curl {
+  margin: 4px 0;
+  padding: 6px 8px;
+  background: #000;
+  color: #c0ffc0;
+  font: 11px/1.45 Monaco, "Courier New", monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.stats { margin-top: 4px; }
+
+.serving-live { color: var(--ok); }
+.serving-loaded { color: #806000; }
+.serving-downloaded { color: #404040; }
+
+.grid tr.best td { background: #ffffd0; }
+.grid tr.clickable { cursor: default; }
+.grid tr.clickable:hover td { background: #e8e8ff; }
+.grid tr.selected td { background: #d8d8ff; }
+
+.opts {
+  max-width: 460px;
+  font-size: 10px;
+  word-break: break-word;
+}
+
+.grid td.mono { vertical-align: top; }

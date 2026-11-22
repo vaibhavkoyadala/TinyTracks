@@ -1,0 +1,342 @@
+"""Server-side catalog of downloadable models.
+
+Only ids listed here can be downloaded. The client never supplies a URL, so the
+API cannot be pointed at arbitrary hosts or used to write arbitrary paths.
+
+Each model is pinned to a Hugging Face commit. Sizes and SHA-256 digests are taken
+from that commit and checked after every download.
+"""
+
+CATALOG: list[dict] = [
+    {
+        "id": "resnet18-in1k",
+        "name": "ResNet-18",
+        "family": "vision",
+        "architecture": "ResNetForImageClassification",
+        "description": "18-layer image classifier, ImageNet-1k weights.",
+        "repo": "timm/resnet18.a1_in1k",
+        "revision": "491b427b45c94c7fb0e78b5474cc919aff584bbf",
+        "files": [
+            {
+                "filename": "model.safetensors",
+                "source_url": "https://huggingface.co/timm/resnet18.a1_in1k/resolve/491b427b45c94c7fb0e78b5474cc919aff584bbf/model.safetensors",
+                "size_bytes": 46807446,
+                "sha256": "80c49dee3da4822c009c5a7fe591e9223c5a2cfcf95a4067ca4dfb5a7b89c612",
+            },
+        ],
+    },
+    {
+        "id": "smollm2-135m-instruct",
+        "name": "SmolLM2-135M Instruct",
+        "family": "language",
+        "architecture": "LlamaForCausalLM",
+        "description": "135M-parameter instruction-tuned causal language model.",
+        "repo": "HuggingFaceTB/SmolLM2-135M-Instruct",
+        "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+        "files": [
+            {
+                "filename": "model.safetensors",
+                "source_url": "https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct/resolve/12fd25f77366fa6b3b4b768ec3050bf629380bac/model.safetensors",
+                "size_bytes": 269060552,
+                "sha256": "5af571cbf074e6d21a03528d2330792e532ca608f24ac70a143f6b369968ab8c",
+            },
+        ],
+    },
+    {
+        "id": "gpt2",
+        "name": "GPT-2 (124M)",
+        "family": "language",
+        "architecture": "GPT2LMHeadModel",
+        "description": "OpenAI's original 124M-parameter GPT-2 base model.",
+        "repo": "openai-community/gpt2",
+        "revision": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+        "files": [
+            {
+                "filename": "model.safetensors",
+                "source_url": "https://huggingface.co/openai-community/gpt2/resolve/607a30d783dfa663caf39e06633721c8d4cfcd7e/model.safetensors",
+                "size_bytes": 548105171,
+                "sha256": "248dfc3911869ec493c76e65bf2fcf7f615828b0254c12b473182f0f81d3a707",
+            },
+        ],
+    },
+    {
+        "id": "gpt-oss-20b",
+        "name": "GPT-OSS 20B",
+        "family": "language",
+        "architecture": "GptOssForCausalLM",
+        "description": "OpenAI open-weight reasoning model (~21B mixture-of-experts). Sharded weights.",
+        "repo": "openai/gpt-oss-20b",
+        "revision": "6cee5e81ee83917806bbde320786a8fb61efebee",
+        "files": [
+            {
+                "filename": "config.json",
+                "source_url": "https://huggingface.co/openai/gpt-oss-20b/resolve/6cee5e81ee83917806bbde320786a8fb61efebee/config.json",
+                "size_bytes": 1806,
+                "sha256": "3a2a26ded679375b7928ddeca59764df7cea83220c1961035f6d6e232659e9ce",
+            },
+            {
+                "filename": "tokenizer.json",
+                "source_url": "https://huggingface.co/openai/gpt-oss-20b/resolve/6cee5e81ee83917806bbde320786a8fb61efebee/tokenizer.json",
+                "size_bytes": 27868174,
+                "sha256": "0614fe83cadab421296e664e1f48f4261fa8fef6e03e63bb75c20f38e37d07d3",
+            },
+            {
+                "filename": "tokenizer_config.json",
+                "source_url": "https://huggingface.co/openai/gpt-oss-20b/resolve/6cee5e81ee83917806bbde320786a8fb61efebee/tokenizer_config.json",
+                "size_bytes": 4200,
+                "sha256": "9279e942392b742d633c7adbb89ebe002c98399db8926a7af5125c726f404070",
+            },
+            {
+                "filename": "model.safetensors.index.json",
+                "source_url": "https://huggingface.co/openai/gpt-oss-20b/resolve/6cee5e81ee83917806bbde320786a8fb61efebee/model.safetensors.index.json",
+                "size_bytes": 36355,
+                "sha256": "0e085b977c4c9942f85938828e8c989ed7d5cdabf852e4da6a67c116cd502cd1",
+            },
+            {
+                "filename": "model-00000-of-00002.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-20b/resolve/6cee5e81ee83917806bbde320786a8fb61efebee/model-00000-of-00002.safetensors",
+                "size_bytes": 4792272488,
+                "sha256": "16d0f997dcfc4462089d536bffe51b4bcea2f872f5c430be09ef8ed392312427",
+            },
+            {
+                "filename": "model-00001-of-00002.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-20b/resolve/6cee5e81ee83917806bbde320786a8fb61efebee/model-00001-of-00002.safetensors",
+                "size_bytes": 4798702184,
+                "sha256": "4fbe328ab445455d6f58dc73852b85873bd626986310abd91cd4d2ce3245eaea",
+            },
+            {
+                "filename": "model-00002-of-00002.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-20b/resolve/6cee5e81ee83917806bbde320786a8fb61efebee/model-00002-of-00002.safetensors",
+                "size_bytes": 4170342232,
+                "sha256": "a18106b209e9ab35c3406db4f6f12a927364a058b21e9d1373d682e20674b303",
+            },
+        ],
+    },
+    {
+        "id": "gpt-oss-120b",
+        "name": "GPT-OSS 120B",
+        "family": "language",
+        "architecture": "GptOssForCausalLM",
+        "description": "OpenAI open-weight reasoning model (~117B mixture-of-experts). About 61 GB.",
+        "repo": "openai/gpt-oss-120b",
+        "revision": "b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
+        "files": [
+            {
+                "filename": "config.json",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/config.json",
+                "size_bytes": 2089,
+                "sha256": "933aeb666a3fd851133ddd7686414f369bc564c4185fb5704416550879f10566",
+            },
+            {
+                "filename": "tokenizer.json",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/tokenizer.json",
+                "size_bytes": 27868174,
+                "sha256": "0614fe83cadab421296e664e1f48f4261fa8fef6e03e63bb75c20f38e37d07d3",
+            },
+            {
+                "filename": "tokenizer_config.json",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/tokenizer_config.json",
+                "size_bytes": 4200,
+                "sha256": "9279e942392b742d633c7adbb89ebe002c98399db8926a7af5125c726f404070",
+            },
+            {
+                "filename": "model.safetensors.index.json",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/model.safetensors.index.json",
+                "size_bytes": 54511,
+                "sha256": "ede2655fdc05008561983b6e0829c600727c28d591e071077377059f03a6c00e",
+            },
+            {
+                "filename": "model-00000-of-00014.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/model-00000-of-00014.safetensors",
+                "size_bytes": 4625017896,
+                "sha256": "695218884684c611fe08a74751ee443f971e9bd9bc062edba822da3fe45969b7",
+            },
+            {
+                "filename": "model-00001-of-00014.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/model-00001-of-00014.safetensors",
+                "size_bytes": 4115586736,
+                "sha256": "a881aa5f561b26a22b14a8262aa61849ace349ffd73d74769e030ac90a1fcf8a",
+            },
+            {
+                "filename": "model-00002-of-00014.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/model-00002-of-00014.safetensors",
+                "size_bytes": 4625017888,
+                "sha256": "022478dd04398c5bdb545a5be0a6437ecc2eb53d1dbd29edafcfff4b3ddf0a41",
+            },
+            {
+                "filename": "model-00003-of-00014.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/model-00003-of-00014.safetensors",
+                "size_bytes": 4115586752,
+                "sha256": "47aee9e7b9d5bedb215042c01ccededd9bd9c30b0dddea862dc2506b9d6c74de",
+            },
+            {
+                "filename": "model-00004-of-00014.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/model-00004-of-00014.safetensors",
+                "size_bytes": 4625017896,
+                "sha256": "f6c2752acda607b1d5ca52df9e75c1b9b2761e6875ff10c9bd6ddac473c0262e",
+            },
+            {
+                "filename": "model-00005-of-00014.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/model-00005-of-00014.safetensors",
+                "size_bytes": 4115586696,
+                "sha256": "0c8dd401544c31cb93b8459eee7da20ea2a07626a59455d7d92b85257df9b46c",
+            },
+            {
+                "filename": "model-00006-of-00014.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/model-00006-of-00014.safetensors",
+                "size_bytes": 4625017856,
+                "sha256": "28d839f2e027985a8b14e45f2323798862eddb7770ee9800ea6b7c803abee489",
+            },
+            {
+                "filename": "model-00007-of-00014.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/model-00007-of-00014.safetensors",
+                "size_bytes": 4060267176,
+                "sha256": "c8958c5f183c04f6ea959cfd90562b5128124154b2bbf979b8a22b9405b30ed8",
+            },
+            {
+                "filename": "model-00008-of-00014.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/model-00008-of-00014.safetensors",
+                "size_bytes": 4625017896,
+                "sha256": "bf1f2a88868ffc37d520dcf77d26f0e823710b5e682d473ff10f6974fa3b7517",
+            },
+            {
+                "filename": "model-00009-of-00014.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/model-00009-of-00014.safetensors",
+                "size_bytes": 4170906304,
+                "sha256": "f72d34a4004241b45c332b61f8ffa124e9a913bc1ab442b66e717d3e94e741ce",
+            },
+            {
+                "filename": "model-00010-of-00014.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/model-00010-of-00014.safetensors",
+                "size_bytes": 4625017896,
+                "sha256": "f48c867c2cb0a44bfc2f8768cb98e4aec9a350946fceacfebdcad5d32ad4a471",
+            },
+            {
+                "filename": "model-00011-of-00014.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/model-00011-of-00014.safetensors",
+                "size_bytes": 4115586752,
+                "sha256": "a06851b2cfd35f48722f823bc1ab8f7bcb4a878a5b8e975f4d3544f230454eeb",
+            },
+            {
+                "filename": "model-00012-of-00014.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/model-00012-of-00014.safetensors",
+                "size_bytes": 4064660808,
+                "sha256": "3af33667c307e20ae2a7648ea52653de46dd0171601ec5c696e47a2f5d5bf1e4",
+            },
+            {
+                "filename": "model-00013-of-00014.safetensors",
+                "source_url": "https://huggingface.co/openai/gpt-oss-120b/resolve/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/model-00013-of-00014.safetensors",
+                "size_bytes": 4625017896,
+                "sha256": "bcbcb74b043e071d1e05471d500d74dcf661175e00878ed302ccdf1801a75aef",
+            },
+        ],
+    },
+    {
+        "id": "qwen2.5-0.5b-instruct",
+        "name": "Qwen2.5-0.5B Instruct",
+        "family": "language",
+        "architecture": "Qwen2ForCausalLM",
+        "description": "Alibaba Qwen2.5 tiny instruction-tuned chat model (0.5B parameters).",
+        "repo": "Qwen/Qwen2.5-0.5B-Instruct",
+        "revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+        "files": [
+            {
+                "filename": "config.json",
+                "source_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct/resolve/7ae557604adf67be50417f59c2c2f167def9a775/config.json",
+                "size_bytes": 659,
+                "sha256": "18e18afcaccafade98daf13a54092927904649e1dd4eba8299ab717d5d94ff45",
+            },
+            {
+                "filename": "generation_config.json",
+                "source_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct/resolve/7ae557604adf67be50417f59c2c2f167def9a775/generation_config.json",
+                "size_bytes": 242,
+                "sha256": "e558847a8b4402616f1273797b015104dc266fe4b520056fca88823ba8f8ebe6",
+            },
+            {
+                "filename": "merges.txt",
+                "source_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct/resolve/7ae557604adf67be50417f59c2c2f167def9a775/merges.txt",
+                "size_bytes": 1671839,
+                "sha256": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+            },
+            {
+                "filename": "model.safetensors",
+                "source_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct/resolve/7ae557604adf67be50417f59c2c2f167def9a775/model.safetensors",
+                "size_bytes": 988097824,
+                "sha256": "fdf756fa7fcbe7404d5c60e26bff1a0c8b8aa1f72ced49e7dd0210fe288fb7fe",
+            },
+            {
+                "filename": "tokenizer.json",
+                "source_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct/resolve/7ae557604adf67be50417f59c2c2f167def9a775/tokenizer.json",
+                "size_bytes": 7031645,
+                "sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539",
+            },
+            {
+                "filename": "tokenizer_config.json",
+                "source_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct/resolve/7ae557604adf67be50417f59c2c2f167def9a775/tokenizer_config.json",
+                "size_bytes": 7305,
+                "sha256": "5b5d4f65d0acd3b2d56a35b56d374a36cbc1c8fa5cf3b3febbbfabf22f359583",
+            },
+            {
+                "filename": "vocab.json",
+                "source_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct/resolve/7ae557604adf67be50417f59c2c2f167def9a775/vocab.json",
+                "size_bytes": 2776833,
+                "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+            },
+        ],
+    },
+    {
+        "id": "qwen2.5-0.5b",
+        "name": "Qwen2.5-0.5B (base)",
+        "family": "language",
+        "architecture": "Qwen2ForCausalLM",
+        "description": "Alibaba Qwen2.5 tiny base model (0.5B parameters), before instruction tuning.",
+        "repo": "Qwen/Qwen2.5-0.5B",
+        "revision": "060db6499f32faf8b98477b0a26969ef7d8b9987",
+        "files": [
+            {
+                "filename": "config.json",
+                "source_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/060db6499f32faf8b98477b0a26969ef7d8b9987/config.json",
+                "size_bytes": 681,
+                "sha256": "479dcf0c5286339e41ad3992cd08ae88a467c4187587936248e2b7c96283484b",
+            },
+            {
+                "filename": "generation_config.json",
+                "source_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/060db6499f32faf8b98477b0a26969ef7d8b9987/generation_config.json",
+                "size_bytes": 138,
+                "sha256": "8c970692323e3ea0e9b8b0a4dca79388d31226e41f83c9fd6014804280ebf6e8",
+            },
+            {
+                "filename": "merges.txt",
+                "source_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/060db6499f32faf8b98477b0a26969ef7d8b9987/merges.txt",
+                "size_bytes": 1671839,
+                "sha256": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+            },
+            {
+                "filename": "model.safetensors",
+                "source_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/060db6499f32faf8b98477b0a26969ef7d8b9987/model.safetensors",
+                "size_bytes": 988097824,
+                "sha256": "88c142557820ccad55bb59756bfcfcf891de9cc6202816bd346445188a0ed342",
+            },
+            {
+                "filename": "tokenizer.json",
+                "source_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/060db6499f32faf8b98477b0a26969ef7d8b9987/tokenizer.json",
+                "size_bytes": 7031645,
+                "sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539",
+            },
+            {
+                "filename": "tokenizer_config.json",
+                "source_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/060db6499f32faf8b98477b0a26969ef7d8b9987/tokenizer_config.json",
+                "size_bytes": 7228,
+                "sha256": "c91efca15ceff6e9ee9424db58a6f59cd41294e550a86cbd07e3c1fb500b34f9",
+            },
+            {
+                "filename": "vocab.json",
+                "source_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/060db6499f32faf8b98477b0a26969ef7d8b9987/vocab.json",
+                "size_bytes": 2776833,
+                "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+            },
+        ],
+    },
+]
+
+CATALOG_BY_ID: dict[str, dict] = {m["id"]: m for m in CATALOG}

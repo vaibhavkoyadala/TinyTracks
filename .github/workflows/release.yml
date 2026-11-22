@@ -1,0 +1,102 @@
+name: Release
+
+# Builds installers for macOS (Apple Silicon), Windows and Linux.
+# Push a tag like `v0.2.0` to build and attach the installers to a draft GitHub Release.
+# Running the workflow by hand (workflow_dispatch) builds the installers without publishing.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PY_BUILD_TAG: "20261110"   # python-build-standalone release (see README)
+  PY_VERSION: "3.12.16"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            py_target: aarch64-apple-darwin
+            build_args: "--mac dmg --arm64"
+            artifacts: "dist/*.dmg"
+          - os: windows-latest
+            py_target: x86_64-pc-windows-msvc
+            build_args: "--win nsis --x64"
+            artifacts: "dist/*.exe"
+          - os: ubuntu-latest
+            py_target: x86_64-unknown-linux-gnu
+            build_args: "--linux AppImage --x64"
+            artifacts: "dist/*.AppImage"
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # The Python runtime is not in git (see .gitignore), so fetch it for this platform.
+      # The archive unpacks to bin/ lib/ ... (or python.exe on Windows) at its top level.
+      - name: Fetch bundled Python runtime
+        run: |
+          set -euo pipefail
+          ARCHIVE="cpython-${PY_VERSION}+${PY_BUILD_TAG}-${{ matrix.py_target }}-install_only.tar.gz"
+          curl -fsSL --retry 3 -o runtime.tgz \
+            "https://github.com/astral-sh/python-build-standalone/releases/download/${PY_BUILD_TAG}/${ARCHIVE}"
+          mkdir -p python
+          tar -xzf runtime.tgz -C python --strip-components=1
+          rm runtime.tgz
+
+      # Install dependencies into the bundled runtime itself. A copied venv is not relocatable,
+      # and electron/main.js falls back to python/bin/python3 when no venv exists.
+      - name: Install Python dependencies
+        run: |
+          set -euo pipefail
+          if [ -x python/bin/python3 ]; then PY=python/bin/python3; else PY=python/python.exe; fi
+          "$PY" -m pip install --upgrade pip
+          "$PY" -m pip install -r python/requirements.txt
+          "$PY" -c "import fastapi, uvicorn, pydantic, tinygrad; print('tinygrad ok')"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build installer
+        env:
+          # Builds are unsigned: no Apple/Windows code-signing certificates are configured.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npx electron-builder ${{ matrix.build_args }} --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.os }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: installers
+          merge-multiple: true
+
+      # Created as a draft so you can review the notes and installers before publishing.
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: installers/*

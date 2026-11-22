@@ -1,0 +1,6 @@
+tinygrad
+fastapi>=0.110
+uvicorn>=0.29
+pydantic>=2
+tokenizers>=0.20
+jinja2>=3.1
