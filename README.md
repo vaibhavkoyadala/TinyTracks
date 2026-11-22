@@ -77,9 +77,26 @@ curl http://127.0.0.1:8080/v1/chat/completions \
   503 model not live, 400 bad request or context too long.
 - Not implemented: `top_p`, tools, and stored responses.
 
+### Speech recognition (Whisper)
+
+Whisper tiny, base and small are catalog models that serve OpenAI's `/v1/audio/transcriptions`:
+
+```sh
+curl http://127.0.0.1:8080/v1/audio/transcriptions \
+  -H "Authorization: Bearer <key>" \
+  -F model=whisper-tiny \
+  -F file=@audio.wav
+```
+
+- `response_format`: `json` (default), `text` or `verbose_json` (text, language, duration). Segment timestamps are not returned.
+- `language`: an ISO code such as `en` or `fr`. Defaults to English. Language detection is not implemented.
+- Input: **PCM WAV only**, up to 25 MB. Any sample rate and channel count is accepted and converted to 16 kHz mono. MP3, M4A and other formats need ffmpeg, which the app does not bundle.
+- Audio longer than 30 s is split into 30 s windows and the results are joined. A phrase at a window boundary can be repeated.
+- Decoding is greedy. The features and transcripts match Hugging Face's reference implementation on the test clips.
+
 ### What can be served
 
-Only Llama and Qwen2 checkpoints can be served live (SmolLM2-135M, Qwen2.5-0.5B). The other catalog
+Llama and Qwen2 checkpoints serve `/v1/chat/completions` (SmolLM2-135M, Qwen2.5-0.5B). Whisper checkpoints serve `/v1/audio/transcriptions`. The other catalog
 models show "not servable yet" and their Play button stays disabled. Weights must fit in memory, because
 they are copied onto the GPU when loaded.
 

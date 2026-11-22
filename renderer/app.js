@@ -287,7 +287,8 @@ let optionSignature = '';
 
 // Rebuild the dropdowns only when the set of choices changes, so an open dropdown is not reset every second.
 function populateModelSelects() {
-  const servable = modelList.filter((m) => m.status === 'ready' && m.servable);
+  // Beam search only runs on language models, so speech models are left out of the Beam dropdown.
+  const servable = modelList.filter((m) => m.status === 'ready' && m.servable && m.family === 'language');
   const signature = `${servable.map((m) => m.id).join(',')}|${modelList.map((m) => m.id).join(',')}`;
   if (signature === optionSignature) return;
   optionSignature = signature;
