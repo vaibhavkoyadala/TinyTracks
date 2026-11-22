@@ -337,6 +337,111 @@ CATALOG: list[dict] = [
             },
         ],
     },
+    {
+        "id": "whisper-tiny",
+        "name": "Whisper tiny",
+        "family": "audio",
+        "architecture": "WhisperForConditionalGeneration",
+        "description": "39M-parameter speech recognition model (multilingual, 680k hours of training audio).",
+        "repo": "openai/whisper-tiny",
+        "revision": "169d4a4341b33bc18d8881c4b69c2e104e1cc0af",
+        "files": [
+            {
+                "filename": "config.json",
+                "source_url": "https://huggingface.co/openai/whisper-tiny/resolve/169d4a4341b33bc18d8881c4b69c2e104e1cc0af/config.json",
+                "size_bytes": 1983,
+                "sha256": "ffdccec4f3211f4c63310f2b7098f309fe70f3952cedc5e4d11e43f5b2379b98",
+            },
+            {
+                "filename": "generation_config.json",
+                "source_url": "https://huggingface.co/openai/whisper-tiny/resolve/169d4a4341b33bc18d8881c4b69c2e104e1cc0af/generation_config.json",
+                "size_bytes": 3747,
+                "sha256": "a5d5325911f16e74001a72fa13d6e208eee51548f994646de1f4b4cc8b35b512",
+            },
+            {
+                "filename": "tokenizer.json",
+                "source_url": "https://huggingface.co/openai/whisper-tiny/resolve/169d4a4341b33bc18d8881c4b69c2e104e1cc0af/tokenizer.json",
+                "size_bytes": 2480466,
+                "sha256": "27fc476bfe7f17299480be2273fc0608e4d5a99aba2ab5dec5374b4482d1a566",
+            },
+            {
+                "filename": "model.safetensors",
+                "source_url": "https://huggingface.co/openai/whisper-tiny/resolve/169d4a4341b33bc18d8881c4b69c2e104e1cc0af/model.safetensors",
+                "size_bytes": 151061672,
+                "sha256": "7ebd0e69e78190ffe1438491fa05cc1f5c1aa3a4c4db3bc1723adbb551ea2395",
+            },
+        ],
+    },
+    {
+        "id": "whisper-base",
+        "name": "Whisper base",
+        "family": "audio",
+        "architecture": "WhisperForConditionalGeneration",
+        "description": "74M-parameter speech recognition model (multilingual).",
+        "repo": "openai/whisper-base",
+        "revision": "e37978b90ca9030d5170a5c07aadb050351a65bb",
+        "files": [
+            {
+                "filename": "config.json",
+                "source_url": "https://huggingface.co/openai/whisper-base/resolve/e37978b90ca9030d5170a5c07aadb050351a65bb/config.json",
+                "size_bytes": 1983,
+                "sha256": "a153c53883a6799b6f056b4a8d1a515c9926d03994682ba88a7616618d7da0c1",
+            },
+            {
+                "filename": "generation_config.json",
+                "source_url": "https://huggingface.co/openai/whisper-base/resolve/e37978b90ca9030d5170a5c07aadb050351a65bb/generation_config.json",
+                "size_bytes": 3807,
+                "sha256": "444b3f636d2fff89dd9ecf549e2a085b61f7ff0fa0246d4628bac6a3b8cc9ba4",
+            },
+            {
+                "filename": "tokenizer.json",
+                "source_url": "https://huggingface.co/openai/whisper-base/resolve/e37978b90ca9030d5170a5c07aadb050351a65bb/tokenizer.json",
+                "size_bytes": 2480466,
+                "sha256": "27fc476bfe7f17299480be2273fc0608e4d5a99aba2ab5dec5374b4482d1a566",
+            },
+            {
+                "filename": "model.safetensors",
+                "source_url": "https://huggingface.co/openai/whisper-base/resolve/e37978b90ca9030d5170a5c07aadb050351a65bb/model.safetensors",
+                "size_bytes": 290403936,
+                "sha256": "07cadb9f25677c8d50df603e66a98fbd842cce45047139baeb16e6219a1e807b",
+            },
+        ],
+    },
+    {
+        "id": "whisper-small",
+        "name": "Whisper small",
+        "family": "audio",
+        "architecture": "WhisperForConditionalGeneration",
+        "description": "244M-parameter speech recognition model (multilingual).",
+        "repo": "openai/whisper-small",
+        "revision": "973afd24965f72e36ca33b3055d56a652f456b4d",
+        "files": [
+            {
+                "filename": "config.json",
+                "source_url": "https://huggingface.co/openai/whisper-small/resolve/973afd24965f72e36ca33b3055d56a652f456b4d/config.json",
+                "size_bytes": 1967,
+                "sha256": "e6a2b489da1b5aed65a8eb8d1e7466fa867ad5643a8bc138ba708bd56b2875c4",
+            },
+            {
+                "filename": "generation_config.json",
+                "source_url": "https://huggingface.co/openai/whisper-small/resolve/973afd24965f72e36ca33b3055d56a652f456b4d/generation_config.json",
+                "size_bytes": 3868,
+                "sha256": "71565b8ef50d0bf7a1193ed4bbed195b94e70c18894d81bba2f1233dcec3ab53",
+            },
+            {
+                "filename": "tokenizer.json",
+                "source_url": "https://huggingface.co/openai/whisper-small/resolve/973afd24965f72e36ca33b3055d56a652f456b4d/tokenizer.json",
+                "size_bytes": 2480466,
+                "sha256": "27fc476bfe7f17299480be2273fc0608e4d5a99aba2ab5dec5374b4482d1a566",
+            },
+            {
+                "filename": "model.safetensors",
+                "source_url": "https://huggingface.co/openai/whisper-small/resolve/973afd24965f72e36ca33b3055d56a652f456b4d/model.safetensors",
+                "size_bytes": 966995080,
+                "sha256": "1d7734884874f1a1513ed9aa760a4f8e97aaa02fd6d93a3a85d27b2ae9ca596b",
+            },
+        ],
+    },
 ]
 
 CATALOG_BY_ID: dict[str, dict] = {m["id"]: m for m in CATALOG}

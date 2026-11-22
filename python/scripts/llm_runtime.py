@@ -24,6 +24,8 @@ class ContextTooLong(ValueError):
 
 
 class LoadedModel:
+    kind = "chat"
+
     def __init__(self, model_id: str, model_dir: Path, max_context: int):
         self.model_id = model_id
         self.model_dir = model_dir

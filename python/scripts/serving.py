@@ -20,6 +20,10 @@ from gpu_worker import GpuWorker
 from llm_loader import SUPPORTED_ARCHITECTURES
 from llm_runtime import ContextTooLong, LoadedModel, TextStreamer
 from store import Store
+from whisper_runtime import LoadedWhisper
+
+AUDIO_ARCHITECTURES = {"WhisperForConditionalGeneration"}
+SERVABLE_ARCHITECTURES = SUPPORTED_ARCHITECTURES | AUDIO_ARCHITECTURES
 
 DEFAULT_MAX_CONTEXT = 2048
 API_KEY_SETTING = "openai_api_key"
@@ -31,6 +35,10 @@ class NotServable(RuntimeError):
 
 class NotLive(RuntimeError):
     """The model exists but is not playing, so the API will not serve it."""
+
+
+class WrongModelKind(ValueError):
+    """The model is live, but this endpoint does not serve its kind (chat vs. transcription)."""
 
 
 class Prepared:
@@ -60,8 +68,8 @@ class Serving:
         if model["status"] != "ready":
             raise NotServable(f"download {model['name']} before loading it")
         arch = CATALOG_BY_ID[model_id]["architecture"]
-        if arch not in SUPPORTED_ARCHITECTURES:
-            raise NotServable(f"{model['name']} ({arch}) cannot be served yet; only Llama and Qwen2 models can")
+        if arch not in SERVABLE_ARCHITECTURES:
+            raise NotServable(f"{model['name']} ({arch}) cannot be served yet; only Llama, Qwen2 and Whisper models can")
 
     def model_dir(self, model_id: str):
         return self.downloads.weights_dir / model_id
@@ -73,11 +81,17 @@ class Serving:
             with self._state_lock:
                 if model_id in self._loaded:
                     return
-            model = LoadedModel(model_id, self.model_dir(model_id), self.max_context)
+            model = self._open(model_id)
             with self._state_lock:
                 self._loaded[model_id] = model
 
         self.gpu.call(job)
+
+    def _open(self, model_id: str):
+        """Build the runtime that matches the model's architecture. Runs on the GpuWorker thread."""
+        if CATALOG_BY_ID[model_id]["architecture"] in AUDIO_ARCHITECTURES:
+            return LoadedWhisper(model_id, self.model_dir(model_id))
+        return LoadedModel(model_id, self.model_dir(model_id), self.max_context)
 
     def eject(self, model_id: str) -> None:
         with self._state_lock:
@@ -145,6 +159,8 @@ class Serving:
             model = self._loaded.get(model_id) if model_id in self._live else None
         if model is None:
             raise NotLive(f"{model_id} is not live; press Play in TinyTracks to serve it")
+        if model.kind != "chat":
+            raise WrongModelKind(f"{model_id} is a speech model; send audio to /v1/audio/transcriptions")
         ids = model.prompt_ids(messages)
         room = model.max_context - len(ids)
         budget = room if max_new_tokens is None else min(max_new_tokens, room)
@@ -196,3 +212,23 @@ class Serving:
             st = self._stats.get(model_id)
             return dict(st) if st else {"requests": 0, "prompt_tokens": 0, "completion_tokens": 0,
                                         "last_tok_s": None, "since": None}
+
+    def transcribe(self, model_id: str, samples, language: str | None) -> dict:
+        """Run speech recognition on a live Whisper model. Returns {text, language, tokens, duration}."""
+        with self._state_lock:
+            model = self._loaded.get(model_id) if model_id in self._live else None
+        if model is None:
+            raise NotLive(f"{model_id} is not live; press Play in TinyTracks to serve it")
+        if model.kind != "transcription":
+            raise WrongModelKind(f"{model_id} is a chat model; send messages to /v1/chat/completions")
+
+        def job() -> dict:
+            with self._state_lock:
+                if self._loaded.get(model_id) is not model or model_id not in self._live:
+                    raise NotLive(f"{model_id} was paused or ejected before transcription started")
+            out = model.transcribe_samples(samples, language)
+            self._record(model_id, {"completion_tokens": out["tokens"]}, prompt_tokens=0)
+            return out
+
+        return self.gpu.call(job)
+

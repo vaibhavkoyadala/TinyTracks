@@ -17,12 +17,16 @@ import time
 import uuid
 
 import uvicorn
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
+from audio import AudioError, read_wav
 from catalog import CATALOG_BY_ID
 from llm_runtime import ContextTooLong
-from serving import NotLive, Serving
+from serving import NotLive, Serving, WrongModelKind
+from whisper_runtime import UnsupportedLanguage
+
+MAX_AUDIO_BYTES = 25 * 1024 * 1024  # OpenAI's documented upload limit
 
 
 class OpenAIError(Exception):
@@ -86,6 +90,8 @@ def build_app(serving: Serving) -> FastAPI:
             prepared = serving.prepare(model_id, messages, max_tokens)
         except NotLive as exc:
             raise OpenAIError(503, str(exc), "server_error", "model_not_live")
+        except WrongModelKind as exc:
+            raise OpenAIError(400, str(exc), "invalid_request_error", "wrong_endpoint", "model")
         except ContextTooLong as exc:
             raise OpenAIError(400, str(exc), "invalid_request_error", "context_length_exceeded", "messages")
         except ValueError as exc:  # template or message shape problems
@@ -140,6 +146,46 @@ def build_app(serving: Serving) -> FastAPI:
                          "finish_reason": info.get("finish_reason", "stop")}],
             "usage": usage_of(info),
         }
+
+    @app.post("/v1/audio/transcriptions")
+    async def transcriptions(
+        request: Request,
+        file: UploadFile = File(...),
+        model: str = Form(...),
+        language: str | None = Form(None),
+        response_format: str = Form("json"),
+    ):
+        check_auth(request)
+        if model not in CATALOG_BY_ID:
+            raise OpenAIError(404, f"The model '{model}' does not exist.", "invalid_request_error", "model_not_found", "model")
+        if response_format not in ("json", "text", "verbose_json"):
+            raise OpenAIError(400, "response_format must be json, text or verbose_json.", "invalid_request_error", None, "response_format")
+        data = await file.read(MAX_AUDIO_BYTES + 1)
+        if len(data) > MAX_AUDIO_BYTES:
+            raise OpenAIError(413, "The audio file is larger than 25 MB.", "invalid_request_error", "file_too_large", "file")
+        if not data:
+            raise OpenAIError(400, "The audio file is empty.", "invalid_request_error", "empty_file", "file")
+        try:
+            samples = read_wav(data)
+        except AudioError as exc:
+            raise OpenAIError(400, str(exc), "invalid_request_error", "invalid_audio", "file")
+
+        try:
+            # Transcription runs on the GPU worker, so keep it off the event loop.
+            out = await asyncio.to_thread(serving.transcribe, model, samples, language or None)
+        except NotLive as exc:
+            raise OpenAIError(503, str(exc), "server_error", "model_not_live")
+        except WrongModelKind as exc:
+            raise OpenAIError(400, str(exc), "invalid_request_error", "wrong_endpoint", "model")
+        except UnsupportedLanguage as exc:
+            raise OpenAIError(400, str(exc), "invalid_request_error", "unsupported_language", "language")
+
+        if response_format == "text":
+            return PlainTextResponse(out["text"])
+        body = {"text": out["text"]}
+        if response_format == "verbose_json":
+            body = {"task": "transcribe", "language": out["language"], "duration": out["duration"], "text": out["text"]}
+        return body
 
     return app
 

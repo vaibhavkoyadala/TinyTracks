@@ -31,6 +31,7 @@ from tinygrad.helpers import CACHEDB, VERSION, Context
 from catalog import CATALOG_BY_ID
 from downloads import Busy
 from gpu_worker import GpuWorker
+from llm_loader import SUPPORTED_ARCHITECTURES
 from llm_runtime import LoadedModel
 from serving import Serving
 from store import Store
@@ -65,6 +66,8 @@ class BenchmarkManager:
         if model_id not in CATALOG_BY_ID:
             raise KeyError(model_id)
         self.serving.check_servable(model_id)
+        if CATALOG_BY_ID[model_id]["architecture"] not in SUPPORTED_ARCHITECTURES:
+            raise ValueError("beam search benchmarks are for language models")
         if not 8 <= gen_tokens <= MAX_GEN_TOKENS:
             raise ValueError(f"gen_tokens must be between 8 and {MAX_GEN_TOKENS}")
         if auto:

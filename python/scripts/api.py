@@ -16,7 +16,7 @@ from benchmarks import BenchmarkManager
 from catalog import CATALOG_BY_ID
 from downloads import Busy, DownloadManager, NoSpace, UnknownModel
 from gpu_worker import GpuWorker
-from serving import NotServable, Serving
+from serving import AUDIO_ARCHITECTURES, NotServable, Serving
 
 app = FastAPI(title="TinyTracks API", version="0.2.0")
 
@@ -176,16 +176,19 @@ def serving_dashboard() -> dict:
         except NotServable as exc:
             servable, reason = False, str(exc)
         live = state == "live"
+        audio = CATALOG_BY_ID[mid]["architecture"] in AUDIO_ARCHITECTURES
+        endpoint = f"{base}/audio/transcriptions" if audio else f"{base}/chat/completions"
         models.append({
             "id": mid,
             "name": m["name"],
             "architecture": CATALOG_BY_ID[mid]["architecture"],
+            "kind": "transcription" if audio else "chat",
             "state": state,
             "live": live,
             "servable": servable,
             "reason": reason,
-            "url": f"{base}/chat/completions" if live else None,
-            "curl": _curl_sample(base, key, mid) if live else None,
+            "url": endpoint if live else None,
+            "curl": (_curl_audio_sample(base, key, mid) if audio else _curl_sample(base, key, mid)) if live else None,
             "stats": serving.stats(mid),
         })
     return {
@@ -199,6 +202,15 @@ def serving_dashboard() -> dict:
 @app.post("/api/serving/rotate-key", dependencies=[Depends(require_token)])
 def rotate_key() -> dict:
     return {"api_key": serving.rotate_api_key()}
+
+
+def _curl_audio_sample(base: str, key: str, model_id: str) -> str:
+    return (
+        f"curl {base}/audio/transcriptions \\\n"
+        f"  -H \"Authorization: Bearer {key}\" \\\n"
+        f"  -F model={model_id} \\\n"
+        f"  -F file=@audio.wav"
+    )
 
 
 def _curl_sample(base: str, key: str, model_id: str) -> str:
