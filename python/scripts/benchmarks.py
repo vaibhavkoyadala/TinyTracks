@@ -16,8 +16,10 @@ Pause and resume take effect between widths. A search already in progress finish
 """
 from __future__ import annotations
 
+import base64
 import gc
 import hashlib
+import io
 import itertools
 import pickle
 import sqlite3
@@ -25,6 +27,7 @@ import threading
 import time
 import uuid
 
+from PIL import Image, ImageDraw
 from tinygrad import Device
 from tinygrad.helpers import CACHEDB, VERSION, Context
 
@@ -33,10 +36,12 @@ from downloads import Busy
 from gpu_worker import GpuWorker
 from llm_loader import SUPPORTED_ARCHITECTURES
 from llm_runtime import LoadedModel
-from serving import Serving
+from serving import VISION_MAX_CONTEXT, Serving, VISION_ARCHITECTURES
 from store import Store
+from vl_runtime import LoadedVLM
 
 DEFAULT_PROMPT = "Write a short poem about the ocean."
+VISION_DEFAULT_PROMPT = "Describe this image in detail."
 MAX_WIDTH = 16           # manual widths
 AUTO_MAX_WIDTH = 32      # auto-optimize stops here even if left on
 MAX_GEN_TOKENS = 512
@@ -66,8 +71,9 @@ class BenchmarkManager:
         if model_id not in CATALOG_BY_ID:
             raise KeyError(model_id)
         self.serving.check_servable(model_id)
-        if CATALOG_BY_ID[model_id]["architecture"] not in SUPPORTED_ARCHITECTURES:
-            raise ValueError("beam search benchmarks are for language models")
+        architecture = CATALOG_BY_ID[model_id]["architecture"]
+        if architecture not in SUPPORTED_ARCHITECTURES | VISION_ARCHITECTURES:
+            raise ValueError("beam search benchmarks are for language and vision models")
         if not 8 <= gen_tokens <= MAX_GEN_TOKENS:
             raise ValueError(f"gen_tokens must be between 8 and {MAX_GEN_TOKENS}")
         if auto:
@@ -83,7 +89,9 @@ class BenchmarkManager:
             job_id = uuid.uuid4().hex[:12]
             self.store.create_job({
                 "id": job_id, "model_id": model_id, "widths": ",".join(map(str, widths)),
-                "gen_tokens": gen_tokens, "prompt": (prompt or DEFAULT_PROMPT).strip(), "status": "queued",
+                "gen_tokens": gen_tokens,
+                "prompt": (prompt or (VISION_DEFAULT_PROMPT if architecture in VISION_ARCHITECTURES else DEFAULT_PROMPT)).strip(),
+                "status": "queued",
                 "auto": auto,
             })
             self._active = job_id
@@ -235,6 +243,8 @@ class BenchmarkManager:
 
     def _measure(self, model_id: str, beam: int, gen_tokens: int, prompt: str):
         """Runs on the GpuWorker thread. Returns (result, kernels, device)."""
+        if CATALOG_BY_ID[model_id]["architecture"] in VISION_ARCHITECTURES:
+            return self._measure_vision(model_id, beam, gen_tokens, prompt)
         device = Device.DEFAULT
         before = _beam_rows() if beam else {}
         with Context(BEAM=beam, IGNORE_BEAM_CACHE=1):
@@ -277,16 +287,69 @@ class BenchmarkManager:
             "decode_tok_s": round(1000 / decode_ms, 2) if decode_ms else None,
             "tokens": produced + 1,
         }
-        kernels = []
-        if beam:
-            after = _beam_rows()
-            for key, val in after.items():
-                if key in before and before[key] == val:
-                    continue
-                if key[1] != beam or key[2] != device:  # key = (ast, amt, device, suffix)
-                    continue
-                kernels.append((hashlib.sha1(repr(key[0]).encode()).hexdigest()[:12], _describe_opts(val)))
+        kernels = _new_kernels(before, beam, device) if beam else []
         return result, kernels, device
+
+    def _measure_vision(self, model_id: str, beam: int, gen_tokens: int, prompt: str):
+        """Same path as a chat request with an image: prepare_prompt, then generate on LoadedVLM.
+
+        Runs on the GpuWorker thread. The first generate compiles the kernels (where BEAM search runs);
+        the timed generate reuses them. Stop tokens end a run early, so `tokens` is what was produced.
+        """
+        device = Device.DEFAULT
+        before = _beam_rows() if beam else {}
+        with Context(BEAM=beam, IGNORE_BEAM_CACHE=1):
+            vlm = LoadedVLM(model_id, self.serving.model_dir(model_id), VISION_MAX_CONTEXT)
+            try:
+                messages = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": prompt}]}]
+                req = vlm.prepare_prompt(messages, [_bench_image_url()])
+
+                t0 = time.perf_counter()
+                list(vlm.generate(req, WARMUP_TOKENS, 0.0, {}))
+                search_s = time.perf_counter() - t0
+
+                info: dict = {}
+                list(vlm.generate(req, gen_tokens, 0.0, info))
+            finally:
+                vlm.close()
+                del vlm
+                gc.collect()
+
+        produced = info.get("completion_tokens") or 0
+        decode_ms = (info["decode_s"] * 1000 / produced) if produced and info.get("decode_s") else None
+        result = {
+            "beam": beam,
+            "search_s": round(search_s, 3),
+            "prefill_ms": round(info["prefill_s"] * 1000, 2) if info.get("prefill_s") else None,
+            "decode_ms_per_token": round(decode_ms, 3) if decode_ms else None,
+            "decode_tok_s": round(1000 / decode_ms, 2) if decode_ms else None,
+            "tokens": produced,
+        }
+        kernels = _new_kernels(before, beam, device) if beam else []
+        return result, kernels, device
+
+
+def _new_kernels(before: dict, beam: int, device: str) -> list[tuple[str, str]]:
+    """Kernel options that this width's search added to tinygrad's cache."""
+    kernels = []
+    for key, val in _beam_rows().items():
+        if key in before and before[key] == val:
+            continue
+        if key[1] != beam or key[2] != device:  # key = (ast, amt, device, suffix)
+            continue
+        kernels.append((hashlib.sha1(repr(key[0]).encode()).hexdigest()[:12], _describe_opts(val)))
+    return kernels
+
+
+def _bench_image_url() -> str:
+    """A fixed synthetic image, so every vision benchmark sees the same input."""
+    img = Image.new("RGB", (448, 336), (235, 240, 250))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([40, 40, 200, 180], fill=(200, 40, 40))
+    draw.ellipse([250, 90, 400, 240], fill=(30, 120, 60))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
 def _beam_rows() -> dict:

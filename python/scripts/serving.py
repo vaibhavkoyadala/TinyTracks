@@ -21,9 +21,12 @@ from llm_loader import SUPPORTED_ARCHITECTURES
 from llm_runtime import ContextTooLong, LoadedModel, TextStreamer
 from store import Store
 from whisper_runtime import LoadedWhisper
+from vl_runtime import ImageNotSupported, LoadedVLM, FAMILIES as VL_FAMILIES
 
 AUDIO_ARCHITECTURES = {"WhisperForConditionalGeneration"}
-SERVABLE_ARCHITECTURES = SUPPORTED_ARCHITECTURES | AUDIO_ARCHITECTURES
+VISION_ARCHITECTURES = set().union(*(family.ARCHITECTURES for family in VL_FAMILIES))
+SERVABLE_ARCHITECTURES = SUPPORTED_ARCHITECTURES | AUDIO_ARCHITECTURES | VISION_ARCHITECTURES
+VISION_MAX_CONTEXT = 4096
 
 DEFAULT_MAX_CONTEXT = 2048
 API_KEY_SETTING = "openai_api_key"
@@ -42,10 +45,13 @@ class WrongModelKind(ValueError):
 
 
 class Prepared:
-    __slots__ = ("model_id", "model", "ids", "max_new_tokens")
+    """A validated, tokenized request. `prompt` is a list of token ids, or a VLPrompt with images."""
+    __slots__ = ("model_id", "model", "prompt", "n_prompt", "max_new_tokens")
 
-    def __init__(self, model_id: str, model: LoadedModel, ids: list[int], max_new_tokens: int):
-        self.model_id, self.model, self.ids, self.max_new_tokens = model_id, model, ids, max_new_tokens
+    def __init__(self, model_id: str, model, prompt, max_new_tokens: int):
+        self.model_id, self.model, self.prompt = model_id, model, prompt
+        self.n_prompt = len(prompt) if isinstance(prompt, list) else len(prompt.ids)
+        self.max_new_tokens = max_new_tokens
 
 
 class Serving:
@@ -70,7 +76,7 @@ class Serving:
             raise NotServable(f"download {model['name']} before loading it")
         arch = CATALOG_BY_ID[model_id]["architecture"]
         if arch not in SERVABLE_ARCHITECTURES:
-            raise NotServable(f"{model['name']} ({arch}) cannot be served yet; only Llama, Qwen2 and Whisper models can")
+            raise NotServable(f"{model['name']} ({arch}) cannot be served yet")
 
     def model_dir(self, model_id: str):
         return self.downloads.weights_dir / model_id
@@ -83,6 +89,8 @@ class Serving:
                 if model_id in self._loaded:
                     return
             model = self._open(model_id)
+            if hasattr(model, "warmup"):
+                model.warmup()
             with self._state_lock:
                 self._loaded[model_id] = model
 
@@ -90,9 +98,15 @@ class Serving:
 
     def _open(self, model_id: str):
         """Build the runtime that matches the model's architecture. Runs on the GpuWorker thread."""
-        if CATALOG_BY_ID[model_id]["architecture"] in AUDIO_ARCHITECTURES:
+        arch = CATALOG_BY_ID[model_id]["architecture"]
+        if arch in AUDIO_ARCHITECTURES:
             return LoadedWhisper(model_id, self.model_dir(model_id))
+        if arch in VISION_ARCHITECTURES:
+            return LoadedVLM(model_id, self.model_dir(model_id), VISION_MAX_CONTEXT)
         return LoadedModel(model_id, self.model_dir(model_id), self.max_context)
+
+    def accepts_images(self, model_id: str) -> bool:
+        return CATALOG_BY_ID[model_id]["architecture"] in VISION_ARCHITECTURES
 
     def _lock_for(self, model_id: str) -> threading.Lock:
         with self._state_lock:
@@ -160,18 +174,26 @@ class Serving:
 
     # ----- inference --------------------------------------------------------
 
-    def prepare(self, model_id: str, messages: list[dict], max_new_tokens: int | None) -> Prepared:
-        """Validate and tokenize a request on the request thread (tokenizers does not touch tinygrad)."""
+    def prepare(self, model_id: str, messages: list[dict], max_new_tokens: int | None,
+                images: list[str] | None = None) -> Prepared:
+        """Validate and tokenize a request on the request thread (tokenizers and Pillow do not touch tinygrad)."""
         with self._state_lock:
             model = self._loaded.get(model_id) if model_id in self._live else None
         if model is None:
             raise NotLive(f"{model_id} is not live; press Play in TinyTracks to serve it")
         if model.kind != "chat":
             raise WrongModelKind(f"{model_id} is a speech model; send audio to /v1/audio/transcriptions")
-        ids = model.prompt_ids(messages)
-        room = model.max_context - len(ids)
+        if isinstance(model, LoadedVLM):
+            prompt = model.prepare_prompt(messages, list(images or []))
+            n_prompt = len(prompt.ids)
+        else:
+            if images:
+                raise ImageNotSupported(f"{model_id} does not accept images")
+            prompt = model.prompt_ids(messages)
+            n_prompt = len(prompt)
+        room = model.max_context - n_prompt
         budget = room if max_new_tokens is None else min(max_new_tokens, room)
-        return Prepared(model_id, model, ids, max(1, budget))
+        return Prepared(model_id, model, prompt, max(1, budget))
 
     def run(self, prepared: Prepared, temperature: float) -> Iterator[tuple[str, object]]:
         """Yield ("delta", text) events as tokens arrive, then ("done", info).
@@ -193,7 +215,7 @@ class Serving:
         info: dict = {}
         completed = False
         try:
-            for token in prepared.model.generate(prepared.ids, prepared.max_new_tokens, temperature, info):
+            for token in prepared.model.generate(prepared.prompt, prepared.max_new_tokens, temperature, info):
                 delta = streamer.push(token)
                 yield ("delta", delta) if delta else None
             tail = streamer.flush()
@@ -203,7 +225,7 @@ class Serving:
         finally:  # also runs when the consumer disconnects and the stream is closed
             if not completed:
                 info["finish_reason"] = "cancelled"
-            self._record(prepared.model_id, info, len(prepared.ids))
+            self._record(prepared.model_id, info, prepared.n_prompt)
         yield ("done", info)
 
     def _record(self, model_id: str, info: dict, prompt_tokens: int) -> None:

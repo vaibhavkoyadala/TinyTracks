@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const net = require('node:net');
 const path = require('node:path');
+const { startBrowserControl } = require('./browser_control');
 
 const isPackaged = app.isPackaged;
 // In dev, python/ sits next to electron/. When packaged, extraResources copies it to resources/python.
@@ -26,6 +27,7 @@ let apiBase = null;
 let backendReady = false;
 let backendError = null;
 let quitting = false;
+let browserControl = null;
 
 function resolvePython() {
   const candidates =
@@ -130,6 +132,19 @@ function registerIpc() {
   });
 }
 
+// Browser pane: each tab is a <webview>. Force the same sandbox on every guest page, drop the
+// preload (so web pages never reach window.backend), and allow only http(s) and about:blank.
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('will-attach-webview', (event, webPreferences, params) => {
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
+    const src = params.src || '';
+    if (src !== 'about:blank' && !/^https?:\/\//i.test(src)) event.preventDefault();
+  });
+});
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
@@ -139,6 +154,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      webviewTag: true,
     },
   });
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
@@ -147,6 +163,11 @@ function createWindow() {
 app.whenReady().then(async () => {
   registerIpc();
   createWindow();
+  try {
+    browserControl = startBrowserControl(dataDir());
+  } catch (err) {
+    console.error('[browser-control] failed to start:', err);
+  }
   try {
     await startBackend();
   } catch (err) {
@@ -161,5 +182,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   quitting = true;
+  if (browserControl) browserControl.stop();
   if (pyProc) pyProc.kill();
 });

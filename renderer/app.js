@@ -219,7 +219,9 @@ function updateModelRow(row, m) {
   pauseBtn.disabled = m.state !== 'live';
   ejectBtn.disabled = m.state === 'downloaded';
   for (const b of row.transport) {
-    b.title = canServe ? '' : 'Download the model first. Only Llama and Qwen2 models can be served.';
+    b.title = canServe ? '' : m.servable
+      ? 'Download the model first.'
+      : `This architecture (${m.architecture}) cannot be served yet.`;
   }
 }
 
@@ -287,8 +289,8 @@ let optionSignature = '';
 
 // Rebuild the dropdowns only when the set of choices changes, so an open dropdown is not reset every second.
 function populateModelSelects() {
-  // Beam search only runs on language models, so speech models are left out of the Beam dropdown.
-  const servable = modelList.filter((m) => m.status === 'ready' && m.servable && m.family === 'language');
+  // Beam search runs on language and vision models. Speech models are left out of the Beam dropdown.
+  const servable = modelList.filter((m) => m.status === 'ready' && m.servable && ['language', 'vision'].includes(m.family));
   const signature = `${servable.map((m) => m.id).join(',')}|${modelList.map((m) => m.id).join(',')}`;
   if (signature === optionSignature) return;
   optionSignature = signature;
@@ -721,3 +723,187 @@ async function refreshGpu() {
 }
 
 init();
+
+// ----- browser pane ---------------------------------------------------------------
+// Each tab is a <webview> kept in the DOM; switching tabs only toggles visibility, so pages keep their state.
+// Cookies live in the persist:browser partition, so sign-ins survive a restart.
+
+const BROWSER_HOME = 'about:blank';
+const browser = { tabs: [], activeId: null, nextId: 1 };
+
+function setBrowserMsg(text) {
+  $('b-msg').textContent = text || '';
+  $('b-msg').className = text ? 'msg error' : 'msg';
+}
+
+// Turns what the user typed into a URL. Bare words go to a search; hosts get https (http for localhost).
+// Returns null for schemes other than http(s) and about:blank (javascript:, file:, data:, ...).
+function normalizeUrl(raw) {
+  const text = raw.trim();
+  if (!text) return null;
+  if (/^about:blank$/i.test(text)) return BROWSER_HOME;
+  if (/^https?:\/\//i.test(text)) return text;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text) || /^(javascript|data|file|vbscript|blob):/i.test(text)) return null;
+  const local = /^(localhost|127\.0\.0\.1)(:|\/|$)/i.test(text);
+  if (/\s/.test(text) || (!text.includes('.') && !local)) {
+    return `https://duckduckgo.com/?q=${encodeURIComponent(text)}`;
+  }
+  return `${local ? 'http' : 'https'}://${text}`;
+}
+
+function activeBrowserTab() {
+  return browser.tabs.find((t) => t.id === browser.activeId) || null;
+}
+
+// The webview throws until its first dom-ready; treat that as "not ready yet".
+function withView(tab, fn) {
+  if (!tab) return;
+  try {
+    fn(tab.view);
+  } catch {
+    // not attached yet
+  }
+}
+
+function newBrowserTab(url = BROWSER_HOME) {
+  const tab = { id: browser.nextId++, title: 'New tab', url, loading: false, view: null };
+  const view = document.createElement('webview');
+  view.setAttribute('partition', 'persist:browser');
+  view.setAttribute('src', url);
+  view.hidden = true;
+  tab.view = view;
+
+  view.addEventListener('page-title-updated', (e) => {
+    tab.title = e.title || tab.url;
+    renderBrowserTabs();
+  });
+  const onNavigate = (e) => {
+    if (e.isMainFrame === false) return;
+    tab.url = e.url;
+    if (tab.id === browser.activeId && document.activeElement !== $('b-url')) syncAddressBar();
+    renderBrowserTabs();
+  };
+  view.addEventListener('did-navigate', onNavigate);
+  view.addEventListener('did-navigate-in-page', onNavigate);
+  view.addEventListener('did-start-loading', () => {
+    tab.loading = true;
+    renderBrowserTabs();
+  });
+  view.addEventListener('did-stop-loading', () => {
+    tab.loading = false;
+    renderBrowserTabs();
+  });
+  view.addEventListener('did-fail-load', (e) => {
+    if (e.errorCode === -3 || e.isMainFrame === false) return; // -3 = aborted, e.g. user navigated away
+    tab.title = `Failed to load (${e.errorDescription})`;
+    renderBrowserTabs();
+  });
+
+  browser.tabs.push(tab);
+  $('b-views').append(view);
+  return tab;
+}
+
+function activateBrowserTab(id) {
+  browser.activeId = id;
+  for (const t of browser.tabs) t.view.hidden = t.id !== id;
+  setBrowserMsg('');
+  renderBrowserTabs();
+  syncAddressBar();
+}
+
+function closeBrowserTab(id) {
+  const i = browser.tabs.findIndex((t) => t.id === id);
+  if (i < 0) return;
+  const [tab] = browser.tabs.splice(i, 1);
+  tab.view.remove();
+  if (browser.activeId === id) {
+    const next = browser.tabs[i] || browser.tabs[i - 1] || null;
+    browser.activeId = null;
+    if (next) activateBrowserTab(next.id);
+    else {
+      renderBrowserTabs();
+      syncAddressBar();
+    }
+  } else {
+    renderBrowserTabs();
+  }
+}
+
+function renderBrowserTabs() {
+  const list = $('btab-list');
+  list.replaceChildren(
+    ...browser.tabs.map((t) => {
+      const active = t.id === browser.activeId;
+      const title = t.loading ? `Loading… ${t.title}` : t.title;
+      return el(
+        'div',
+        {
+          class: `btab${active ? ' active' : ''}`,
+          role: 'tab',
+          'aria-selected': String(active),
+          title: t.url,
+          on: { click: () => activateBrowserTab(t.id) },
+        },
+        el('span', { class: 'btab-title', text: title }),
+        el('button', {
+          type: 'button',
+          class: 'btab-close',
+          text: '×',
+          'aria-label': 'Close tab',
+          title: 'Close tab',
+          on: {
+            click: (e) => {
+              e.stopPropagation();
+              closeBrowserTab(t.id);
+            },
+          },
+        })
+      );
+    })
+  );
+  $('b-empty').hidden = browser.tabs.length > 0;
+  const hasTab = Boolean(activeBrowserTab());
+  for (const id of ['b-back', 'b-fwd', 'b-reload']) $(id).disabled = !hasTab;
+}
+
+function syncAddressBar() {
+  const tab = activeBrowserTab();
+  $('b-url').value = tab && tab.url !== BROWSER_HOME ? tab.url : '';
+}
+
+function initBrowser() {
+  $('btab-new').addEventListener('click', () => {
+    const tab = newBrowserTab();
+    activateBrowserTab(tab.id);
+    $('b-url').focus();
+  });
+
+  $('b-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const url = normalizeUrl($('b-url').value);
+    if (!url) {
+      setBrowserMsg('Only http and https addresses can be opened.');
+      return;
+    }
+    setBrowserMsg('');
+    const tab = activeBrowserTab();
+    if (!tab) {
+      activateBrowserTab(newBrowserTab(url).id);
+      return;
+    }
+    tab.url = url;
+    withView(tab, (v) => {
+      v.src = url;
+    });
+    renderBrowserTabs();
+  });
+
+  $('b-back').addEventListener('click', () => withView(activeBrowserTab(), (v) => v.canGoBack() && v.goBack()));
+  $('b-fwd').addEventListener('click', () => withView(activeBrowserTab(), (v) => v.canGoForward() && v.goForward()));
+  $('b-reload').addEventListener('click', () => withView(activeBrowserTab(), (v) => v.reload()));
+
+  activateBrowserTab(newBrowserTab().id);
+}
+
+initBrowser();

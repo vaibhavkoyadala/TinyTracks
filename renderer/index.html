@@ -13,6 +13,8 @@
         <span id="status" class="status">Starting backend…</span>
       </header>
 
+      <div class="split">
+      <div class="left">
       <nav class="tabs" role="tablist">
         <button class="tab active" role="tab" data-tab="dashboard" aria-selected="true">Dashboard</button>
         <button class="tab" role="tab" data-tab="models" aria-selected="false">Models</button>
@@ -206,6 +208,28 @@
           <pre id="health-out" class="output"></pre>
         </section>
       </main>
+      </div>
+
+      <!-- Browser: tabs and address bar on top, web page below. Pages run in a sandboxed webview with no access to the backend. -->
+      <section class="browser" aria-label="Browser">
+        <div class="btabs" role="tablist">
+          <div id="btab-list" class="btab-list"></div>
+          <button type="button" id="btab-new" class="btab-new" title="New tab">+</button>
+        </div>
+        <form id="b-form" class="burl">
+          <button type="button" id="b-back" title="Back" disabled>◀</button>
+          <button type="button" id="b-fwd" title="Forward" disabled>▶</button>
+          <button type="button" id="b-reload" title="Reload" disabled>↻</button>
+          <input id="b-url" type="text" spellcheck="false" autocomplete="off" placeholder="Address or search" aria-label="Address" />
+          <button type="submit">GO</button>
+        </form>
+        <p id="b-msg" class="msg" role="status"></p>
+        <div class="bviews">
+          <p id="b-empty" class="bempty">No tabs open. Press + to open one.</p>
+          <div id="b-views" class="bviews-inner"></div>
+        </div>
+      </section>
+      </div>
     </div>
     <script src="app.js"></script>
   </body>

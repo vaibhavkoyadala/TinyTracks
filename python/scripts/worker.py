@@ -15,9 +15,7 @@ import os
 import signal
 import sys
 import threading
-
-# Compile kernels in-process. tinygrad's worker pool forks, and forking after Metal starts crashes.
-os.environ.setdefault("PARALLEL", "0")
+import time
 
 import uvicorn  # noqa: E402
 
@@ -38,6 +36,11 @@ def main() -> None:
     internal = uvicorn.Server(uvicorn.Config(api.app, host=args.host, port=args.port, log_level="info"))
     internal_thread = threading.Thread(target=internal.run, name="internal-api", daemon=True)
     internal_thread.start()
+    deadline = time.time() + 15
+    while not internal.started and internal_thread.is_alive() and time.time() < deadline:
+        time.sleep(0.05)
+    if not internal.started:  # e.g. the port is already in use: do not run without an API
+        sys.exit(f"could not start the internal API on {args.host}:{args.port}")
 
     openai_server = OpenAIServer(api.serving, api.OPENAI_HOST, api.OPENAI_PORT)
     try:
@@ -62,6 +65,8 @@ def main() -> None:
         internal_thread.join(timeout=5)
         api.manager.shutdown()
         api.benchmarks.stop()
+        from tinygrad.engine.worker import terminate_worker_pool  # os._exit skips atexit, so stop the pool here
+        terminate_worker_pool()
         sys.stdout.flush()
         sys.stderr.flush()
         # Skip interpreter teardown: releasing Metal objects at exit can segfault.

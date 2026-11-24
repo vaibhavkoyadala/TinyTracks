@@ -21,6 +21,8 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from audio import AudioError, read_wav
+from vl_runtime import ImageNotSupported
+from vl_image import ImageError
 from request_log import RequestLogMiddleware
 from catalog import CATALOG_BY_ID
 from llm_runtime import ContextTooLong
@@ -89,10 +91,15 @@ def build_app(serving: Serving) -> FastAPI:
         stream = bool(body.get("stream", False))
         include_usage = bool((body.get("stream_options") or {}).get("include_usage", False))
 
+        messages, images = _normalize_messages(messages, serving.accepts_images(model_id))
         try:
-            prepared = serving.prepare(model_id, messages, max_tokens)
+            prepared = serving.prepare(model_id, messages, max_tokens, images)
         except NotLive as exc:
             raise OpenAIError(503, str(exc), "server_error", "model_not_live")
+        except ImageNotSupported as exc:
+            raise OpenAIError(400, str(exc), "invalid_request_error", "image_not_supported", "messages")
+        except ImageError as exc:
+            raise OpenAIError(400, str(exc), "invalid_request_error", "invalid_image", "messages")
         except WrongModelKind as exc:
             raise OpenAIError(400, str(exc), "invalid_request_error", "wrong_endpoint", "model")
         except ContextTooLong as exc:
@@ -110,8 +117,8 @@ def build_app(serving: Serving) -> FastAPI:
 
         def usage_of(info: dict) -> dict:
             completion = info.get("completion_tokens", 0)
-            return {"prompt_tokens": len(prepared.ids), "completion_tokens": completion,
-                    "total_tokens": len(prepared.ids) + completion}
+            return {"prompt_tokens": prepared.n_prompt, "completion_tokens": completion,
+                    "total_tokens": prepared.n_prompt + completion}
 
         if stream:
             def events():
@@ -192,6 +199,43 @@ def build_app(serving: Serving) -> FastAPI:
         return body
 
     return app
+
+
+def _normalize_messages(messages: list, allow_images: bool) -> tuple[list, list[str]]:
+    """OpenAI content parts -> plain text when there are no images, or -> parts with {"type": "image"} placeholders.
+
+    Returns the rewritten messages and the image data URLs, in order. Only data: URLs are accepted,
+    so the server never fetches anything.
+    """
+    out: list = []
+    images: list[str] = []
+    for message in messages:
+        if not isinstance(message, dict):
+            raise OpenAIError(400, "each message must be an object", "invalid_request_error", "invalid_messages", "messages")
+        content = message.get("content")
+        if isinstance(content, list):
+            parts = []
+            texts = []
+            for part in content:
+                kind = part.get("type") if isinstance(part, dict) else None
+                if kind == "text":
+                    parts.append({"type": "text", "text": str(part.get("text", ""))})
+                    texts.append(str(part.get("text", "")))
+                elif kind == "image_url":
+                    if not allow_images:
+                        raise OpenAIError(400, "this model does not accept images; use a vision model",
+                                          "invalid_request_error", "image_not_supported", "messages")
+                    url = (part.get("image_url") or {}).get("url") if isinstance(part.get("image_url"), dict) else None
+                    if not isinstance(url, str):
+                        raise OpenAIError(400, "image_url.url must be a data: URL", "invalid_request_error", "invalid_image", "messages")
+                    images.append(url)
+                    parts.append({"type": "image"})
+                else:
+                    raise OpenAIError(400, f"unsupported content part type {kind!r}", "invalid_request_error",
+                                      "unsupported_content", "messages")
+            message = {**message, "content": parts if images else "\n".join(texts)}
+        out.append(message)
+    return out, images
 
 
 def _collect(serving: Serving, prepared, temperature: float) -> tuple[str, dict]:
