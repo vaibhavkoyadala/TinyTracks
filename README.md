@@ -145,3 +145,4 @@ finish, and the job then ends as `done`. It always stops at width 32 (`AUTO_MAX_
 - **Electron version.** `package.json` pins `electron` `^33` and `electron-builder` `^25` as a starting point. Update to current releases.
 - **tinygrad device.** `Device.DEFAULT` decides which backend runs (CPU, METAL, CUDA, …). Check it on each target platform.
 - **Dev vs. packaged paths.** Dev uses `./python`; packaged uses `process.resourcesPath/python`.
+# TinyTracks
