@@ -22,7 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             py_target: aarch64-apple-darwin
             build_args: "--mac dmg --arm64"
             artifacts: "dist/*.dmg"
@@ -40,11 +40,11 @@ jobs:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       # The Python runtime is not in git (see .gitignore), so fetch it for this platform.
@@ -78,7 +78,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npx electron-builder ${{ matrix.build_args }} --publish never
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: installer-${{ matrix.os }}
           path: ${{ matrix.artifacts }}
@@ -89,7 +89,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: installers
           merge-multiple: true
